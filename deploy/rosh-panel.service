@@ -1,0 +1,16 @@
+[Unit]
+Description=Rosh read-only web panel
+After=network-online.target rosh-bot.service
+
+[Service]
+Type=simple
+User=rosh
+WorkingDirectory=/opt/rosh_bot
+ExecStart=/opt/rosh_bot/venv/bin/python -m app.panel
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
