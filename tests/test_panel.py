@@ -20,7 +20,7 @@ def setup():
     app = App(cfg, bale, conn)
     app._t = int(time.time())  # پنل از ساعت واقعی سیستم استفاده می‌کند؛ ساعت آزمون هم باید با آن هم‌خوان باشد
     app.clock = lambda: app._t
-    go(app, upd(ADMIN, "/start"), upd(ADMIN, data="a:sadd"), upd(ADMIN, "علی رضایی | گروه الف\n<script>alert(1)</script>"))
+    go(app, upd(ADMIN, "/start"), upd(ADMIN, data="a:sadd:6"), upd(ADMIN, "علی رضایی | گروه الف\n<script>alert(1)</script>"))
     ali = conn.execute("SELECT * FROM students ORDER BY id").fetchone()
     conn.execute("UPDATE students SET chat_id=? WHERE id=?", (STU, ali["id"])); conn.commit()
     dl = app._t + 10 * H
@@ -120,6 +120,43 @@ def test_panel_all():
         c3 = Client(port)
         codes = [c3.login(f"0000000{i}")[0] for i in range(6)]
         assert codes[-1] == 429, codes
+    finally:
+        srv.shutdown()
+
+
+def test_panel_books_and_points_pages():
+    app, bale, cfg = setup()
+    now = int(time.time())
+    from app import books
+    cur = app.conn.execute("INSERT INTO students(full_name,code,created_ts,grade,chat_id) VALUES('رضا کتابخوان','999999',?,9,777)", (now - 9 * 86400,))
+    sid9 = cur.lastrowid
+    d2 = books.noon(now) - 86400
+    app.conn.execute("INSERT INTO book_reports(student_id,day1_ts,day2_ts,book,from_page,to_page,pages,posted,created_ts) VALUES(?,?,?,?,?,?,?,1,?)",
+                     (sid9, d2 - 86400, d2, "اسطوره های <موازی>", 451, 470, 20, now))
+    app.conn.execute("INSERT INTO points_ledger(student_id,delta,reason,kind,status,created_ts) VALUES(1,10,'تکلیف امتیازی <ویژه>','manual','pending',?)", (now,))
+    app.conn.commit()
+    srv = panel.make_server(cfg, "127.0.0.1", 0)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        cl = Client(srv.server_address[1])
+        assert cl.login(web_code(app, bale))[0] == 303
+        for path in ["/books", "/books?days=30", "/books?days=7", "/points", "/students", f"/student/{sid9}", "/student/1", "/"]:
+            st, _, body = cl.req("GET", path)
+            assert st == 200, path
+            text = body.decode()
+            assert "<script>" not in text.replace('<script src="/static/panel.js">', "")
+        text = cl.req("GET", "/books")[2].decode()
+        assert "رضا کتابخوان" in text and "اسطوره های &lt;موازی&gt;" in text and "۲۰" in text and "رتبه" not in text
+        text = cl.req("GET", f"/student/{sid9}")[2].decode()
+        assert "پایه‌ی نهم" in text and "۴۵۱ تا ۴۷۰" in text
+        text = cl.req("GET", "/points")[2].decode()
+        assert "تکلیف امتیازی &lt;ویژه&gt;" in text and "فقط‌خواندنی" in text
+        text = cl.req("GET", "/students")[2].decode()
+        assert "نهم" in text and "ششم" in text
+        text = cl.req("GET", "/")[2].decode()
+        assert "رضا کتابخوان" not in text                    # داشبورد فقط پایه‌ی ششم
+        st, r, body = cl.req("GET", "/books.xlsx?days=30")
+        assert st == 200 and body[:2] == b"PK" and "xlsx" in r.getheader("Content-Disposition")
     finally:
         srv.shutdown()
 

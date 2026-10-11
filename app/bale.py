@@ -44,10 +44,16 @@ class Bale:
         return js.get("result")
 
     def delete_webhook(self):
-        try:
-            self.call("deleteWebhook")
-        except BaleError:
-            pass
+        """وب‌هوک را خاموش می‌کند (مستندات بله: setWebhook با url خالی)؛ اگر متد پشتیبانی نشد، بی‌صدا رد می‌شود."""
+        for method, data in (("setWebhook", {"url": ""}), ("deleteWebhook", None)):
+            try:
+                self.call(method, data)
+                return
+            except BaleError:
+                continue
+
+    def delete_message(self, chat_id, message_id):
+        return self.call("deleteMessage", {"chat_id": chat_id, "message_id": message_id})
 
     def get_updates(self, offset=None, timeout: int = 20):
         data = {"timeout": timeout}

@@ -12,6 +12,10 @@ from .core import App
 log = logging.getLogger("rosh")
 
 
+def needs_pause(updates, elapsed: float) -> bool:
+    return not updates and elapsed < 1.0
+
+
 def start_panel(cfg):
     """اگر PANEL_ENABLE=1 باشد، پنل وب را در همین فرایند (نخ جدا) بالا می‌آورد؛ خطای پنل بات را متوقف نمی‌کند."""
     if not cfg.panel_enable:
@@ -42,7 +46,10 @@ def run():
     offset, last_tick = None, 0.0
     while True:
         try:
+            t0 = time.time()
             updates = bale.get_updates(offset, timeout=20)
+            if needs_pause(updates, time.time() - t0):
+                time.sleep(1.0)  # اگر سرور فوراً خالی جواب داد (بدون long-poll)، هر ثانیه یک‌بار می‌پرسیم
         except BaleError as e:
             log.warning("دریافت به‌روزرسانی ناموفق: %s", e)
             time.sleep(5)

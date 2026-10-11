@@ -118,6 +118,19 @@ def parse(text, now):
     return None
 
 
+def noon(ts) -> int:
+    """ظهر همان روز (ساعت ایران)"""
+    d = to_dt(ts)
+    return int(datetime(d.year, d.month, d.day, 12, tzinfo=TEHRAN).timestamp())
+
+
+def parse_date(text):
+    """فقط تاریخ، مثل «۱۴۰۵/۰۷/۱۳» ← ظهر همان روز (ساعت ایران)؛ نامعتبر = None."""
+    t = re.sub(r"\s+", "", en(text))
+    m = re.match(r"^(\d{4})[/\-.](\d{1,2})[/\-.](\d{1,2})$", t)
+    return from_jalali(*map(int, m.groups()), 12, 0) if m else None
+
+
 DATE_HELP = ("زمان را این‌طور بنویس:\n"
              "• «۱۴۰۵/۰۷/۲۰ ۲۱:۳۰»\n"
              "• یا «فردا ۲۱:۳۰» ، «امروز ۲۳:۰۰» ، «پس‌فردا ۱۸:۰۰»")

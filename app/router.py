@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from . import admin, student
+from . import admin, books, student
 from .bale import BaleError
 from .core import App, Ctx
 from .fa import fa
@@ -28,9 +28,23 @@ def handle(app: App, u: dict):
         msg = u["message"]
         chat = (msg.get("chat") or {}).get("id")
         user = (msg.get("from") or {}).get("id") or chat
-        if chat is None or (msg.get("chat") or {}).get("type", "private") != "private":
-            return  # فقط گفتگوی خصوصی
+        ctype = (msg.get("chat") or {}).get("type", "private")
+        if chat is None or ctype == "channel":
+            return
+        if ctype != "private":
+            route_group(app, chat, user, msg)  # گروه: فقط شناسایی گروه و دستور /setgroup
+            return
         route_message(app, Ctx(chat, user), msg)
+
+
+def route_group(app: App, chat: int, user: int, msg: dict):
+    """بات در گروه فقط برای ارسال گزارش‌هاست: گروه را می‌شناسد و به مدیر اجازه‌ی /setgroup می‌دهد."""
+    title = (msg.get("chat") or {}).get("title") or ""
+    books.record_group(app, chat, title)
+    text = (msg.get("text") or "").strip()
+    if text.startswith("/setgroup") and app.is_admin(user):
+        books.set_group(app, chat)
+        app.audit(user, "book_group_set", str(chat))
 
 
 def route_callback(app: App, ctx: Ctx, parts):
@@ -45,7 +59,20 @@ def route_callback(app: App, ctx: Ctx, parts):
         if not st:
             student.ask_code(app, ctx)
             return
+        if st["grade"] == 9:  # نهمی‌ها فقط باشگاه کتابخوانی را دارند
+            if parts[1:2] == ["home"]:
+                app.clear_state(ctx.chat_id)
+            student.home(app, ctx, st)
+            return
         student.on_callback(app, ctx, st, parts)
+    elif kind == "b":
+        st = app.student_by_chat(ctx.chat_id)
+        if not st:
+            student.ask_code(app, ctx)
+        elif st["grade"] != 9:
+            student.home(app, ctx, st)  # بخش کتابخوانی مخصوص پایه‌ی نهم است
+        else:
+            books.on_callback(app, ctx, st, parts)
 
 
 def route_message(app: App, ctx: Ctx, msg: dict):
@@ -77,7 +104,10 @@ def route_message(app: App, ctx: Ctx, msg: dict):
         return
     st = app.student_by_chat(ctx.chat_id)
     if st:
-        student.on_message(app, ctx, st, msg)
+        if st["grade"] == 9:
+            books.on_message(app, ctx, st, msg)
+        else:
+            student.on_message(app, ctx, st, msg)
     else:
         state, _ = app.get_state(ctx.chat_id)
         if state != "s:code":

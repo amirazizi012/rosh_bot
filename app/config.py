@@ -28,11 +28,15 @@ class Config:
     late_window_hours: int = 24
     streak_size: int = 6
     reminder_hours: int = 3
-    max_file_mb: int = 20
+    max_file_mb: int = 15
     max_files_per_submission: int = 15
     panel_url: str = ""
     panel_host: str = "127.0.0.1"
-    panel_port: int = 8080
+    panel_port: int = 8090
+    extra_streak_size: int = 5
+    extra_streak_points: int = 10
+    book_max_pages: int = 300
+    book_max_days_back: int = 45
     panel_secure_cookie: bool = False
     panel_trust_proxy: bool = False
     panel_enable: bool = False
@@ -63,7 +67,12 @@ def load() -> Config:
         reminder_hours=_int("REMINDER_HOURS", 3),
         panel_url=os.environ.get("PANEL_URL", "").strip().rstrip("/"),
         panel_host=os.environ.get("PANEL_HOST", "127.0.0.1").strip(),
-        panel_port=_int("PANEL_PORT", 8080),
+        panel_port=_int("PANEL_PORT", 8090),
+        max_file_mb=_int("MAX_FILE_MB", 15),
+        extra_streak_size=_int("EXTRA_STREAK_SIZE", 5),
+        extra_streak_points=_int("EXTRA_STREAK_POINTS", 10),
+        book_max_pages=_int("BOOK_MAX_PAGES", 300),
+        book_max_days_back=_int("BOOK_MAX_DAYS_BACK", 45),
         panel_secure_cookie=os.environ.get("PANEL_SECURE_COOKIE", "0") == "1",
         panel_trust_proxy=os.environ.get("PANEL_TRUST_PROXY", "0") == "1",
         panel_enable=os.environ.get("PANEL_ENABLE", "0") == "1",

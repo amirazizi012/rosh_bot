@@ -13,7 +13,8 @@ CREATE TABLE IF NOT EXISTS students(
   chat_id INTEGER UNIQUE,
   active INTEGER NOT NULL DEFAULT 1,
   created_ts INTEGER NOT NULL,
-  joined_ts INTEGER
+  joined_ts INTEGER,
+  grade INTEGER NOT NULL DEFAULT 6            -- پایه: ۶ یا ۹
 );
 CREATE TABLE IF NOT EXISTS student_groups(
   student_id INTEGER NOT NULL, group_id INTEGER NOT NULL,
@@ -29,7 +30,8 @@ CREATE TABLE IF NOT EXISTS assignments(
   late_hours INTEGER NOT NULL,
   target_all INTEGER NOT NULL DEFAULT 1,
   status TEXT NOT NULL DEFAULT 'active',      -- active | cancelled
-  created_ts INTEGER NOT NULL
+  created_ts INTEGER NOT NULL,
+  points INTEGER NOT NULL DEFAULT 0           -- امتیاز تکلیف امتیازی (بعد از تأیید مدیر)
 );
 CREATE TABLE IF NOT EXISTS assignment_groups(
   assignment_id INTEGER NOT NULL, group_id INTEGER NOT NULL,
@@ -84,6 +86,31 @@ CREATE TABLE IF NOT EXISTS reminders(
   PRIMARY KEY(assignment_id, student_id, kind)
 );
 CREATE TABLE IF NOT EXISTS chat_state(chat_id INTEGER PRIMARY KEY, state TEXT, data TEXT);
+CREATE TABLE IF NOT EXISTS book_reports(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  student_id INTEGER NOT NULL,
+  day1_ts INTEGER NOT NULL, day2_ts INTEGER NOT NULL,      -- ظهر روز اول و دوم (ساعت ایران)
+  book TEXT NOT NULL,
+  from_page INTEGER NOT NULL, to_page INTEGER NOT NULL, pages INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',                   -- active | deleted
+  posted INTEGER NOT NULL DEFAULT 0,
+  created_ts INTEGER NOT NULL, edited_ts INTEGER
+);
+CREATE INDEX IF NOT EXISTS ix_br ON book_reports(student_id, day1_ts, status);
+CREATE TABLE IF NOT EXISTS points_ledger(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  student_id INTEGER NOT NULL, delta INTEGER NOT NULL, reason TEXT NOT NULL,
+  kind TEXT NOT NULL,                                      -- bonus | badge | manual
+  source_code TEXT, source_key TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',                  -- pending | approved | rejected
+  created_ts INTEGER NOT NULL, decided_ts INTEGER, admin_id INTEGER
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ix_pl_src ON points_ledger(student_id, kind, source_code, source_key) WHERE source_code IS NOT NULL;
+CREATE TABLE IF NOT EXISTS badge_blocks(
+  student_id INTEGER NOT NULL, code TEXT NOT NULL, key TEXT NOT NULL,
+  PRIMARY KEY(student_id, code, key)
+);
+CREATE TABLE IF NOT EXISTS known_groups(chat_id INTEGER PRIMARY KEY, title TEXT, last_seen_ts INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS web_logins(
   code_hash TEXT PRIMARY KEY, admin_id INTEGER NOT NULL,
   created_ts INTEGER NOT NULL, expires_ts INTEGER NOT NULL
@@ -102,5 +129,18 @@ def connect(path) -> sqlite3.Connection:
     mode = os.environ.get("SQLITE_JOURNAL", "WAL").upper()
     conn.execute("PRAGMA journal_mode=%s" % (mode if mode in ("WAL", "DELETE", "TRUNCATE") else "WAL"))
     conn.executescript(SCHEMA)
+    migrate(conn)
     conn.commit()
     return conn
+
+
+def _cols(conn, table):
+    return {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+
+
+def migrate(conn):
+    """به‌روزرسانی دیتابیس‌های قدیمی (ساخته‌شده با نسخه‌ی پیش از پایه‌ی نهم و امتیاز) بدون از دست رفتن داده."""
+    if "grade" not in _cols(conn, "students"):
+        conn.execute("ALTER TABLE students ADD COLUMN grade INTEGER NOT NULL DEFAULT 6")
+    if "points" not in _cols(conn, "assignments"):
+        conn.execute("ALTER TABLE assignments ADD COLUMN points INTEGER NOT NULL DEFAULT 0")

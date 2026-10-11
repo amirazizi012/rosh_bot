@@ -62,6 +62,10 @@ def on_code(app: App, ctx: Ctx, text: str):
 
 
 def home(app: App, ctx: Ctx, st):
+    if st["grade"] == 9:
+        from . import books
+        books.home(app, ctx, st)
+        return
     app.show(ctx, f"سلام {st['full_name']} 👋\nچه کاری می‌خواهی انجام بدهی؟", MENU)
 
 
@@ -104,6 +108,8 @@ def progress(app: App, ctx: Ctx, st):
              f"تکالیف الزامی: ✅ {fa(t['on_time'])} به‌موقع | ⏰ {fa(t['late'])} با تاخیر | ❌ {fa(t['missed'])} ارسال‌نشده",
              "", f"مسیر نشان بعدی: {fa(t['current'])} از {fa(n)}", bar,
              f"(هر {fa(n)} تکلیف الزامی پشت‌سرهم و به‌موقع = یک نشان. یک تاخیر یا ارسال‌نشدن، شمارش را از صفر شروع می‌کند.)",
+             "", f"⭐ امتیاز تو: {fa(t['points'])}" + (f"  (در انتظار تأیید مدیر: {fa(t['points_pending'])})" if t["points_pending"] else ""),
+             f"(هر {fa(app.cfg.extra_streak_size)} تکلیف اختیاری/امتیازی پشت‌سرهم و به‌موقع = یک نشان کوشا با {fa(app.cfg.extra_streak_points)} امتیاز)",
              "", "نشان‌های تو:"]
     lines += [f"• {b['title']}" for b in bd] or ["هنوز نشانی نگرفته‌ای؛ اولین‌ش نزدیک است 💪"]
     app.show(ctx, "\n".join(lines), BACK)
@@ -134,7 +140,8 @@ def view_assignment(app: App, ctx: Ctx, st, aid: int):
     for f in app.conn.execute("SELECT * FROM assignment_files WHERE assignment_id=? ORDER BY id", (aid,)):
         app.send_file(ctx.chat_id, f["path"])
     closes = f"\n(آخرین زمان ارسال با تاخیر: {J.fmt(dl + a['late_hours'] * 3600)})" if s["code"] == "overdue" else ""
-    lines = [f"{R.KIND_ICON[a['kind']]} {a['title']}", f"نوع: {R.KIND_LABEL[a['kind']]}"]
+    lines = [f"{R.KIND_ICON[a['kind']]} {a['title']}", f"نوع: {R.KIND_LABEL[a['kind']]}" +
+             (f" | ⭐ {fa(a['points'])} امتیاز (بعد از تأیید مدیر)" if a["kind"] == "bonus" and a["points"] else "")]
     if a["description"]:
         lines += ["", a["description"]]
     lines += ["", f"⏰ مهلت: {J.fmt(dl)}"]
@@ -221,6 +228,10 @@ def on_upload_message(app: App, ctx: Ctx, st, msg, data):
         log.warning("دانلود فایل ناموفق: %s", e)
         app.send(ctx.chat_id, "دریافت فایل ناموفق بود. دوباره بفرست.", controls)
         return
+    if real > app.cfg.max_file_mb * 1024 * 1024:
+        dest.unlink(missing_ok=True)
+        app.send(ctx.chat_id, f"حجم فایل بیشتر از {fa(app.cfg.max_file_mb)} مگابایت است. کوچک‌ترش کن و دوباره بفرست.", controls)
+        return
     app.conn.execute("INSERT INTO submission_files(submission_id,path,name,size) VALUES(?,?,?,?)",
                      (data["draft"], str(dest), name, real))
     app.conn.commit()
@@ -256,9 +267,11 @@ def finish(app: App, ctx: Ctx, st):
     else:
         head = f"⏰ پاسخت ثبت شد، اما {duration(over)} بعد از مهلت بود و با تاخیر ثبت شد."
     app.send(ctx.chat_id, f"{head}\n\n📎 تعداد فایل: {fa(n)}\n🕒 زمان ثبت: {J.fmt(now)}")
-    new = R.award_auto(app.conn, st["id"], now, app.cfg.streak_size)
+    new = app.award(st["id"])
     for t in new:
         app.send(ctx.chat_id, f"🎉 نشان تازه گرفتی!\n{t}")
+    if a["kind"] == "bonus" and a["points"]:
+        app.send(ctx.chat_id, f"⭐ این تکلیف امتیازی است؛ {fa(a['points'])} امتیاز بعد از تأیید مدیر به تو داده می‌شود.")
     home(app, ctx, st)
 
 

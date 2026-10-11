@@ -16,8 +16,11 @@ class FakeBale:
     def __init__(self):
         self.out = []      # (chat, text)
         self.files = []
+        self.fail_chats = set()   # چت‌هایی که ارسال به آن‌ها خطا می‌دهد
 
     def send_message(self, chat_id, text, rows=None):
+        if chat_id in self.fail_chats:
+            raise BaleError("Forbidden: bot is not a member")
         self.out.append((chat_id, text, rows)); return {"message_id": len(self.out)}
 
     def edit_text(self, *a, **k):
@@ -29,6 +32,9 @@ class FakeBale:
     send_document = send_photo
 
     def answer_callback(self, *a, **k): pass
+
+    def delete_message(self, chat_id, message_id):
+        self.deleted = getattr(self, "deleted", []) + [(chat_id, message_id)]
 
     def download(self, file_id, dest):
         Path(dest).parent.mkdir(parents=True, exist_ok=True)
@@ -69,7 +75,7 @@ def go(app, *updates):
 def test_full_flow():
     app, bale = make_app()
     # مدیر: افزودن دانش‌آموز با گروه
-    go(app, upd(ADMIN, "/start"), upd(ADMIN, data="a:sadd"), upd(ADMIN, "علی رضایی | گروه الف\nمحمد کریمی"))
+    go(app, upd(ADMIN, "/start"), upd(ADMIN, data="a:sadd:6"), upd(ADMIN, "علی رضایی | گروه الف\nمحمد کریمی"))
     studs = app.conn.execute("SELECT * FROM students ORDER BY id").fetchall()
     assert len(studs) == 2 and studs[0]["code"].isdigit() and len(studs[0]["code"]) == 6
     ali = studs[0]
@@ -101,7 +107,7 @@ def test_full_flow():
 
 def test_late_and_closed_via_bot():
     app, bale = make_app()
-    go(app, upd(ADMIN, "/start"), upd(ADMIN, data="a:sadd"), upd(ADMIN, "علی"))
+    go(app, upd(ADMIN, "/start"), upd(ADMIN, data="a:sadd:6"), upd(ADMIN, "علی"))
     ali = app.conn.execute("SELECT * FROM students").fetchone()
     app.conn.execute("UPDATE students SET chat_id=? WHERE id=?", (STU, ali["id"])); app.conn.commit()
     dl = app._t + H
@@ -119,7 +125,7 @@ def test_late_and_closed_via_bot():
 
 def test_admin_tools_excuse_resubmit_zip_xlsx():
     app, bale = make_app()
-    go(app, upd(ADMIN, "/start"), upd(ADMIN, data="a:sadd"), upd(ADMIN, "علی"))
+    go(app, upd(ADMIN, "/start"), upd(ADMIN, data="a:sadd:6"), upd(ADMIN, "علی"))
     ali = app.conn.execute("SELECT * FROM students").fetchone()
     app.conn.execute("UPDATE students SET chat_id=? WHERE id=?", (STU, ali["id"])); app.conn.commit()
     dl = app._t + 2 * H
@@ -163,7 +169,7 @@ def test_login_lockout():
 
 def test_reminder_once():
     app, bale = make_app()
-    go(app, upd(ADMIN, "/start"), upd(ADMIN, data="a:sadd"), upd(ADMIN, "علی"))
+    go(app, upd(ADMIN, "/start"), upd(ADMIN, data="a:sadd:6"), upd(ADMIN, "علی"))
     app.conn.execute("UPDATE students SET chat_id=?", (STU,)); app.conn.commit()
     app.conn.execute("INSERT INTO assignments(title,kind,deadline_ts,grace_min,late_hours,target_all,created_ts) VALUES('ت','required',?,20,24,1,?)", (app._t + 2 * H, app._t)); app.conn.commit()
     scheduler.reminders(app); scheduler.reminders(app)

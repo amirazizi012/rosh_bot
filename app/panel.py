@@ -24,6 +24,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
 
 from . import config, panel_ui as UI, reports
+from . import jalali as J
 from .fa import en
 
 log = logging.getLogger("rosh.panel")
@@ -254,7 +255,13 @@ class Handler(BaseHTTPRequestHandler):
         logo = srv.logo
         with closing(open_ro(cfg)) as conn:
             pages = {"/": UI.dashboard, "/students": UI.students_page, "/assignments": UI.assignments_page,
-                     "/badges": UI.badges_page, "/feedback": UI.feedback_page, "/audit": UI.audit_page}
+                     "/badges": UI.badges_page, "/feedback": UI.feedback_page, "/audit": UI.audit_page,
+                     "/points": UI.points_page}
+            days = self._days(u.query)
+            if path == "/books":
+                return self.html(UI.books_page(conn, cfg, now, days, logo=logo))
+            if path == "/books.xlsx":
+                return self.serve_books_xlsx(conn, now, days)
             if path in pages:
                 return self.html(pages[path](conn, cfg, now, logo=logo))
             seg = [p for p in path.split("/") if p]
@@ -277,6 +284,26 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/export.xlsx":
                 return self.serve_xlsx(conn, now)
         return self.html(UI.not_found(logo), 404)
+
+    @staticmethod
+    def _days(query: str):
+        v = parse_qs(query).get("days", [""])[0]
+        return int(v) if v in ("7", "30", "90") else None
+
+    def serve_books_xlsx(self, conn, now: int, days):
+        cfg = self.server.cfg
+
+        class _App:
+            pass
+        a = _App()
+        a.conn, a.cfg = conn, cfg
+        a.now = lambda: now
+        exports = Path(cfg.data_dir).resolve() / "exports"
+        exports.mkdir(parents=True, exist_ok=True)
+        tmp = exports / f"webbooks_{secrets.token_hex(6)}.xlsx"
+        reports.build_books_xlsx(a, tmp, J.noon(now) - days * 86400 if days else None)
+        self.send_path(tmp, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                       {"Content-Disposition": "attachment; filename=\"rosh-books.xlsx\""}, delete_after=True)
 
     # --- ورود
     def do_login(self, now: int):

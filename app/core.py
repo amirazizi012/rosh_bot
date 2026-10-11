@@ -67,6 +67,12 @@ class App:
     def assignment(self, aid):
         return self.conn.execute("SELECT * FROM assignments WHERE id=?", (aid,)).fetchone()
 
+    def award(self, sid):
+        """نشان‌های خودکار (و امتیازهای در انتظار تأیید) را برای یک دانش‌آموز بررسی می‌کند."""
+        from . import rules as R
+        c = self.cfg
+        return R.award_auto(self.conn, sid, self.now(), c.streak_size, c.extra_streak_size, c.extra_streak_points)
+
     def audit(self, admin_id, action, details=""):
         self.conn.execute("INSERT INTO audit(ts,admin_id,action,details) VALUES(?,?,?,?)",
                           (self.now(), admin_id, action, details))
@@ -99,14 +105,20 @@ class App:
                 self.bale.edit_text(ctx.chat_id, ctx.msg_id, text, rows)
                 return
             except BaleError as e:
+                # طبق مستندات بله فعلاً پیام‌های دارای دکمه‌ی inline قابل ویرایش نیستند؛ پیام قبلی را پاک و پیام تازه می‌فرستیم
                 log.info("ویرایش پیام ممکن نشد، پیام تازه ارسال می‌شود: %s", e)
+                try:
+                    self.bale.delete_message(ctx.chat_id, ctx.msg_id)
+                except BaleError:
+                    pass
         self.send(ctx.chat_id, text, rows)
 
     def send_file(self, chat_id, path, caption=None):
         """عکس را به‌صورت عکس و بقیه را به‌صورت فایل می‌فرستد."""
         path = Path(path)
         try:
-            if path.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp"):
+            # سقف ارسال عکس با multipart ده مگابایت است؛ عکس بزرگ‌تر را به‌صورت فایل می‌فرستیم
+            if path.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp") and path.stat().st_size <= 9_500_000:
                 self.bale.send_photo(chat_id, path, caption)
             else:
                 self.bale.send_document(chat_id, path, caption)
@@ -114,3 +126,24 @@ class App:
         except (BaleError, OSError) as e:
             log.warning("ارسال فایل ناموفق: %s", e)
             return False
+
+
+def _admin_ids(self):
+    ids = set(self.cfg.admin_ids)
+    ids.update(r["user_id"] for r in self.conn.execute("SELECT user_id FROM admins"))
+    return ids
+
+
+def _get_setting(self, key, default=None):
+    r = self.conn.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+    return r["value"] if r else default
+
+
+def _set_setting(self, key, value):
+    self.conn.execute("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, str(value)))
+    self.conn.commit()
+
+
+App.admin_ids = _admin_ids
+App.get_setting = _get_setting
+App.set_setting = _set_setting

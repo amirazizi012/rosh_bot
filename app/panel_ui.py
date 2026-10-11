@@ -90,8 +90,8 @@ document.addEventListener('input',function(e){
 });
 """
 
-NAV = [("/", "داشبورد"), ("/students", "دانش‌آموزان"), ("/assignments", "تکالیف"),
-       ("/badges", "نشان‌ها"), ("/feedback", "بازخوردها"), ("/audit", "گزارش فعالیت مدیران")]
+NAV = [("/", "داشبورد"), ("/students", "دانش‌آموزان"), ("/assignments", "تکالیف"), ("/points", "امتیازها"),
+       ("/badges", "نشان‌ها"), ("/books", "باشگاه کتابخوانی"), ("/feedback", "بازخوردها"), ("/audit", "فعالیت مدیران")]
 
 
 def has_logo(data_dir: Path) -> bool:
@@ -170,8 +170,8 @@ def link(href, text) -> str:
     return f'<a href="{esc(href)}">{esc(text)}</a>'
 
 
-def students_active(conn):
-    return conn.execute("SELECT * FROM students WHERE active=1 ORDER BY full_name").fetchall()
+def students_active(conn, grade=6):
+    return conn.execute("SELECT * FROM students WHERE active=1 AND grade=? ORDER BY full_name", (grade,)).fetchall()
 
 
 def groups_of(conn, sid) -> str:
@@ -211,9 +211,10 @@ def dashboard(conn, cfg, now, logo=False) -> str:
     day = J.to_dt(now).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
     today = conn.execute("SELECT COUNT(*) c FROM submissions WHERE state='final' AND submitted_ts>=?", (int(day),)).fetchone()["c"]
     n_badges = conn.execute("SELECT COUNT(*) c FROM badges").fetchone()["c"]
+    n_pending = conn.execute("SELECT COUNT(*) c FROM points_ledger WHERE status='pending'").fetchone()["c"]
     cards = "".join(f'<div class="card stat"><b>{fa(v)}</b><span>{esc(t)}</span></div>' for v, t in [
-        (f"{joined} از {len(studs)}", "دانش‌آموز وارد شده به بات"), (n_asg, "تکلیف فعال"),
-        (today, "ارسال امروز"), (n_badges, "نشان صادرشده")])
+        (f"{joined} از {len(studs)}", "دانش‌آموز ششم وارد شده به بات"), (n_asg, "تکلیف فعال"),
+        (today, "ارسال امروز"), (n_badges, "نشان صادرشده"), (n_pending, "امتیاز در انتظار تأیید مدیر")])
 
     up = conn.execute("SELECT * FROM assignments WHERE status='active' AND deadline_ts>? ORDER BY deadline_ts LIMIT 5", (now,)).fetchall()
     up_rows = []
@@ -233,9 +234,10 @@ def dashboard(conn, cfg, now, logo=False) -> str:
     for s in studs:
         t = stats[s["id"]]
         rows.append([link(f"/student/{s['id']}", s["full_name"]), groups_of(conn, s["id"]), stat_bar(t),
-                     f'{fa(t["on_time"])} / {fa(t["late"])} / {fa(t["missed"])}', progress(t["current"], n), fa(t["badges"])])
+                     f'{fa(t["on_time"])} / {fa(t["late"])} / {fa(t["missed"])}', progress(t["current"], n), fa(t["badges"]),
+                     fa(t["points"]) + (f' <span class="muted">(+{fa(t["points_pending"])})</span>' if t["points_pending"] else "")])
     main_tbl = (f'<input class="search" data-table="t-class" placeholder="جست‌وجوی نام یا گروه…">' +
-                table(["دانش‌آموز", "گروه", "توزیع وضعیت", "به‌موقع / تاخیر / ارسال‌نشده", f"مسیر نشان بعدی ({fa(n)})", "نشان"], rows, "t-class")) if rows \
+                table(["دانش‌آموز", "گروه", "توزیع وضعیت", "به‌موقع / تاخیر / ارسال‌نشده", f"مسیر نشان بعدی ({fa(n)})", "نشان", "امتیاز"], rows, "t-class")) if rows \
         else '<div class="card muted">هنوز دانش‌آموزی ثبت نشده است.</div>'
 
     rec = conn.execute("SELECT s.*, st.full_name, a.title FROM submissions s JOIN students st ON st.id=s.student_id "
@@ -247,7 +249,7 @@ def dashboard(conn, cfg, now, logo=False) -> str:
 
     body = (f'<h1>داشبورد</h1><p class="sub">وضعیت امروز — {esc(J.fmt(now))}</p><div class="grid">{cards}</div>'
             f'<div class="two"><div><h2>مهلت‌های پیش‌رو</h2>{up_html}</div><div><h2>نیازمند پیگیری</h2>{need_html}</div></div>'
-            f'<h2>وضعیت دانش‌آموزان (تکالیف الزامی)</h2>{main_tbl}<h2>آخرین ارسال‌ها</h2>{rec_html}'
+            f'<h2>وضعیت دانش‌آموزان پایه‌ی ششم (تکالیف الزامی)</h2>{main_tbl}<h2>آخرین ارسال‌ها</h2>{rec_html}'
             f'<p class="muted" style="margin-top:18px"><a class="btn ghost" href="/export.xlsx">📗 دریافت اکسل کامل</a></p>')
     return layout("داشبورد", body, "/", logo=logo)
 
@@ -255,15 +257,22 @@ def dashboard(conn, cfg, now, logo=False) -> str:
 def students_page(conn, cfg, now, logo=False) -> str:
     n = cfg.streak_size
     rows = []
-    for s in conn.execute("SELECT * FROM students ORDER BY active DESC, full_name").fetchall():
-        t = R.student_stats(conn, s["id"], now, n)
+    for s in conn.execute("SELECT * FROM students ORDER BY active DESC, grade, full_name").fetchall():
         state = "فعال" if s["active"] else "غیرفعال"
         joined = "✔ وارد شده" if s["chat_id"] else "🕓 هنوز وارد نشده"
-        rows.append([link(f"/student/{s['id']}", s["full_name"]), groups_of(conn, s["id"]), esc(f"{state} | {joined}"),
-                     stat_bar(t), f'{fa(t["on_time"])} / {fa(t["late"])} / {fa(t["missed"])} / {fa(t["excused"])}', fa(t["badges"])])
+        grade = "نهم" if s["grade"] == 9 else "ششم"
+        if s["grade"] == 9:
+            r = conn.execute("SELECT COUNT(*) n, COALESCE(SUM(pages),0) p FROM book_reports WHERE student_id=? AND status='active'", (s["id"],)).fetchone()
+            rows.append([link(f"/student/{s['id']}", s["full_name"]), esc(grade), '<span class="muted">—</span>', esc(f"{state} | {joined}"),
+                         '<span class="muted">—</span>', f'{fa(r["n"])} گزارش | {fa(r["p"])} صفحه', "—"])
+            continue
+        t = R.student_stats(conn, s["id"], now, n)
+        rows.append([link(f"/student/{s['id']}", s["full_name"]), esc(grade), groups_of(conn, s["id"]), esc(f"{state} | {joined}"),
+                     stat_bar(t), f'{fa(t["on_time"])} / {fa(t["late"])} / {fa(t["missed"])} / {fa(t["excused"])}',
+                     f'{fa(t["badges"])} نشان | {fa(t["points"])} امتیاز'])
     body = ('<h1>دانش‌آموزان</h1><p class="sub">برای دیدن گزارش کامل هر نفر روی نامش بزن.</p>'
             '<input class="search" data-table="t-st" placeholder="جست‌وجوی نام یا گروه…">' +
-            table(["نام", "گروه", "وضعیت", "توزیع", "به‌موقع / تاخیر / ارسال‌نشده / عذر", "نشان"], rows, "t-st"))
+            table(["نام", "پایه", "گروه", "وضعیت", "توزیع", "به‌موقع / تاخیر / ارسال‌نشده / عذر (یا گزارش مطالعه)", "نشان و امتیاز"], rows, "t-st"))
     return layout("دانش‌آموزان", body, "/students", logo=logo)
 
 
@@ -272,10 +281,13 @@ def student_page(conn, cfg, now, sid: int, logo=False):
     if not s:
         return None
     n = cfg.streak_size
+    if s["grade"] == 9:
+        return student_book_page(conn, s, logo)
     t = R.student_stats(conn, sid, now, n)
     chips = "".join(f'<div class="card stat"><b>{fa(v)}</b><span>{esc(l)}</span></div>' for v, l in [
         (t["on_time"], "به‌موقع"), (t["late"], "با تاخیر"), (t["missed"], "ارسال‌نشده"), (t["excused"], "عذر موجه"),
-        (t["badges"], "نشان"), (t["extra_done"], "اختیاری/امتیازی انجام‌شده")])
+        (t["badges"], "نشان"), (t["extra_done"], "اختیاری/امتیازی انجام‌شده"),
+        (t["points"], "امتیاز تأییدشده"), (t["points_pending"], "امتیاز در انتظار تأیید")])
     asg_rows = []
     for a in reversed(R.targets_for_student(conn, sid)):
         st = R.student_status(conn, a, sid, now)
@@ -291,12 +303,17 @@ def student_page(conn, cfg, now, sid: int, logo=False):
     fbs = conn.execute("SELECT f.*, a.title FROM feedback f LEFT JOIN assignments a ON a.id=f.assignment_id WHERE f.student_id=? ORDER BY f.ts DESC LIMIT 20", (sid,)).fetchall()
     f_html = "".join(f'<div class="row"><span>{esc(f["text"])}' + (f' <span class="muted">({esc(f["title"])})</span>' if f["title"] else "") +
                      f'</span><span class="muted nowrap">{esc(J.fmt_short(f["ts"]))}</span></div>' for f in fbs) or '<span class="muted">بازخوردی ثبت نشده است.</span>'
+    ledger = conn.execute("SELECT * FROM points_ledger WHERE student_id=? ORDER BY id DESC LIMIT 15", (sid,)).fetchall()
+    mark = {"approved": '<span class="chip ok">تأییدشده</span>', "pending": '<span class="chip wait">در انتظار</span>', "rejected": '<span class="chip miss">ردشده</span>'}
+    l_rows = [[("+" if r["delta"] > 0 else "") + fa(r["delta"]), esc(r["reason"]), mark[r["status"]],
+               f'<span class="nowrap">{esc(J.fmt_short(r["created_ts"]))}</span>'] for r in ledger]
+    l_html = table(["امتیاز", "دلیل", "وضعیت", "زمان"], l_rows) if l_rows else '<div class="card muted">هنوز امتیازی ثبت نشده است.</div>'
     state = "" if s["active"] else ' <span class="chip exc">غیرفعال</span>'
     body = (f'<p><a href="/students">← همه‌ی دانش‌آموزان</a></p><h1>{esc(s["full_name"])}{state}</h1>'
             f'<p class="sub">گروه‌ها: {groups_of(conn, sid)}</p><div class="grid">{chips}</div>'
             f'<h2>مسیر نشان بعدی</h2><div class="card">{progress(t["current"], n)}<p class="muted" style="margin:6px 0 0">'
             f'{fa(t["current"])} از {fa(n)} تکلیف الزامی پشت‌سرهم و به‌موقع</p></div>'
-            f'<h2>تکالیف</h2>{asg_html}'
+            f'<h2>تکالیف</h2>{asg_html}<h2>دفتر امتیاز</h2>{l_html}'
             f'<div class="two"><div><h2>نشان‌ها</h2><div class="card">{b_html}</div></div>'
             f'<div><h2>بازخوردها</h2><div class="card">{f_html}</div></div></div>'
             f'<p style="margin-top:16px"><a class="btn ghost" href="/zip-student/{sid}">📥 دانلود همه‌ی پاسخ‌های او (ZIP)</a></p>')
@@ -389,3 +406,77 @@ def audit_page(conn, cfg, now, logo=False) -> str:
 
 def not_found(logo=False) -> str:
     return layout("پیدا نشد", '<div class="card"><h1>صفحه پیدا نشد</h1><p><a href="/">بازگشت به داشبورد</a></p></div>', logo=logo)
+
+
+# ====================== پایه‌ی نهم: باشگاه کتابخوانی ======================
+def _pair(r) -> str:
+    from .books import pair_label
+    return pair_label(r["day1_ts"], r["day2_ts"])
+
+
+def student_book_page(conn, s, logo=False) -> str:
+    rows_db = conn.execute("SELECT * FROM book_reports WHERE student_id=? AND status='active' ORDER BY day2_ts DESC, id DESC", (s["id"],)).fetchall()
+    pages = sum(r["pages"] for r in rows_db)
+    books_n = len({reports._norm_book(r["book"]) for r in rows_db})
+    cards = "".join(f'<div class="card stat"><b>{fa(v)}</b><span>{esc(t)}</span></div>' for v, t in [
+        (len(rows_db), "گزارش"), (pages, "مجموع صفحه"), (books_n, "کتاب")])
+    rows = [[f'<span class="nowrap">{esc(_pair(r))}</span>', esc(r["book"]), f'{fa(r["from_page"])} تا {fa(r["to_page"])}',
+             fa(r["pages"]), "✅" if r["posted"] else "—"] for r in rows_db]
+    tbl = table(["روزها", "کتاب", "صفحه‌ها", "تعداد", "ارسال به گروه"], rows) if rows else '<div class="card muted">هنوز گزارشی ثبت نشده است.</div>'
+    state = "" if s["active"] else ' <span class="chip exc">غیرفعال</span>'
+    body = (f'<p><a href="/students">← همه‌ی دانش‌آموزان</a></p><h1>{esc(s["full_name"])}{state}</h1>'
+            f'<p class="sub">پایه‌ی نهم — باشگاه کتابخوانی</p><div class="grid">{cards}</div><h2>گزارش‌های مطالعه</h2>{tbl}')
+    return layout(s["full_name"], body, "/students", logo=logo)
+
+
+def books_page(conn, cfg, now, days=None, logo=False) -> str:
+    since = J.noon(now) - days * 86400 if days else None
+    st = reports.book_stats(conn, since)
+    labels = [(None, "همه‌ی زمان‌ها"), (7, "۷ روز اخیر"), (30, "۳۰ روز اخیر"), (90, "۹۰ روز اخیر")]
+    filt = " ".join(f'<a class="pill" href="/books{"?days=" + str(d) if d else ""}"'
+                    f'{" style=\"font-weight:700;background:#cfe8d6\"" if d == days else ""}>{esc(t)}</a>' for d, t in labels)
+    cards = "".join(f'<div class="card stat"><b>{fa(v)}</b><span>{esc(t)}</span></div>' for v, t in [
+        (f'{st["readers"]} از {len(st["students"])}', "دانش‌آموز گزارش داده‌اند"), (st["total_reports"], "گزارش"),
+        (st["total_pages"], "مجموع صفحه"), (len(st["books"]), "کتاب")])
+    srows = []
+    for p in st["students"]:
+        last = J.fmt_short(p["last"]).split(" ")[0] if p["last"] else "—"
+        srows.append([link(f"/student/{p['student']['id']}", p["student"]["full_name"]), fa(p["reports"]), fa(p["pages"]),
+                      fa(len(p["books"])), fa(len(p["weeks"])), last])
+    stbl = (table(["دانش‌آموز", "گزارش", "مجموع صفحه", "کتاب", "هفته‌های فعال", "آخرین گزارش"], srows)
+            if srows else '<div class="card muted">دانش‌آموز پایه‌ی نهمی ثبت نشده است.</div>')
+    mx = max([w[1][0] for w in st["weekly"]] or [1])
+    bars = "".join(f'<div class="row"><span class="nowrap">{esc(J.fmt_short(w).split(" ")[0])}</span>'
+                   f'<span style="flex:1;margin:0 10px"><i style="display:block;height:12px;border-radius:6px;background:#3aa066;width:{v[0] * 100 / mx:.1f}%"></i></span>'
+                   f'<span class="nowrap">{fa(v[0])} صفحه | {fa(v[1])} گزارش</span></div>' for w, v in st["weekly"][-12:])
+    chart = f'<div class="card">{bars}</div>' if bars else '<div class="card muted">هنوز داده‌ای نیست.</div>'
+    btbl = table(["کتاب", "خواننده", "مجموع صفحه"], [[esc(b["title"]), fa(len(b["readers"])), fa(b["pages"])] for b in st["books"][:20]]) \
+        if st["books"] else '<div class="card muted">هنوز کتابی ثبت نشده است.</div>'
+    rec = [[link(f"/student/{r['student_id']}", r["full_name"]), f'<span class="nowrap">{esc(_pair(r))}</span>', esc(r["book"]),
+            f'{fa(r["from_page"])} تا {fa(r["to_page"])} ({fa(r["pages"])})', "✅" if r["posted"] else "—"]
+           for r in reversed(st["rows"][-20:])]
+    rtbl = table(["دانش‌آموز", "روزها", "کتاب", "صفحه‌ها", "گروه"], rec) if rec else '<div class="card muted">هنوز گزارشی نیست.</div>'
+    body = (f'<h1>باشگاه کتابخوانی (پایه‌ی نهم)</h1><p class="sub">{filt}</p><div class="grid">{cards}</div>'
+            f'<h2>هر دانش‌آموز</h2>{stbl}<h2>صفحه‌های خوانده‌شده در هر هفته (۱۲ هفته‌ی اخیر)</h2>{chart}'
+            f'<div class="two"><div><h2>کتاب‌ها</h2>{btbl}</div></div><h2>آخرین گزارش‌ها</h2>{rtbl}'
+            f'<p style="margin-top:16px"><a class="btn ghost" href="/books.xlsx{"?days=" + str(days) if days else ""}">📗 دریافت اکسل کتابخوانی</a></p>')
+    return layout("باشگاه کتابخوانی", body, "/books", logo=logo)
+
+
+def points_page(conn, cfg, now, logo=False) -> str:
+    n = cfg.streak_size
+    rows = []
+    for s in students_active(conn):
+        a, p = R.points_total(conn, s["id"])
+        rows.append([link(f"/student/{s['id']}", s["full_name"]), fa(a), fa(p) if p else "—"])
+    pending = conn.execute("SELECT l.*, s.full_name FROM points_ledger l JOIN students s ON s.id=l.student_id "
+                           "WHERE l.status='pending' ORDER BY l.id").fetchall()
+    p_rows = [[link(f"/student/{r['student_id']}", r["full_name"]), esc(r["reason"]), "+" + fa(r["delta"]),
+               f'<span class="nowrap">{esc(J.fmt_short(r["created_ts"]))}</span>'] for r in pending]
+    ptbl = table(["دانش‌آموز", "دلیل", "امتیاز", "زمان"], p_rows) if p_rows else '<div class="card muted">امتیاز در انتظار تأییدی نیست ✅</div>'
+    note = ('<p class="note">تأیید، رد و تغییر دستی امتیازها فقط در بات انجام می‌شود (پنل فقط‌خواندنی است): '
+            'پنل مدیریت ← «⭐ تأیید امتیازها».</p>')
+    body = (f'<h1>امتیازها</h1><p class="sub">امتیاز تأییدشده‌ی هر دانش‌آموز پایه‌ی ششم</p>{note}'
+            f'<div class="two"><div><h2>در انتظار تأیید ({fa(len(pending))})</h2>{ptbl}</div>'
+            f'<div><h2>جدول امتیاز</h2>{table(["دانش‌آموز", "تأییدشده", "در انتظار"], rows)}</div></div>')
+    return layout("امتیازها", body, "/points", logo=logo)

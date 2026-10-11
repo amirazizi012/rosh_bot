@@ -8,6 +8,7 @@ import shutil
 import time
 from pathlib import Path
 
+from . import books, points
 from . import jalali as J
 from . import reports
 from . import rules as R
@@ -21,6 +22,7 @@ log = logging.getLogger("rosh")
 MENU = [[btn("📝 تکلیف جدید", "a:new"), btn("📚 تکالیف", "a:alist:0")],
         [btn("👥 دانش‌آموزان", "a:slist:0"), btn("🗂 گروه‌ها", "a:glist")],
         [btn("📊 گزارش‌ها", "a:rep"), btn("📢 پیام همگانی", "a:bc")],
+        [btn("⭐ تأیید امتیازها", "a:pts:0"), btn("📖 باشگاه کتابخوانی (نهم)", "a:book")],
         [btn("🏅 نشان دستی", "a:badge"), btn("⚙ مدیران", "a:adm")],
         [btn("🌐 ورود به پنل وب (فقط‌خواندنی)", "a:web")]]
 HOME = [[btn("⬅ پنل مدیریت", "a:menu")]]
@@ -141,6 +143,21 @@ def new_kind(app, ctx):
              [[btn("📘 الزامی", "a:nk:required")], [btn("🧩 اختیاری", "a:nk:optional"), btn("⭐ امتیازی", "a:nk:bonus")]])
 
 
+def ask_points(app, ctx, data):
+    app.set_state(ctx.chat_id, "a:npts", data)
+    app.show(ctx, "⭐ امتیاز این تکلیف امتیازی چند باشد؟\n(بعد از تأیید شما به دانش‌آموز داده می‌شود)\nیکی را بزن یا عدد دلخواه را بنویس:",
+             [[btn(fa(5), "a:np:5"), btn(fa(10), "a:np:10"), btn(fa(20), "a:np:20"), btn(fa(50), "a:np:50")]])
+
+
+def st_npts(app, ctx, msg, text, data):
+    v = en(text).strip()
+    if not v.isdigit() or not (1 <= int(v) <= 1000):
+        app.send(ctx.chat_id, "یک عدد بین ۱ تا ۱۰۰۰ بنویس.")
+        return
+    data["points"] = int(v)
+    new_target(app, ctx, data, "bonus")
+
+
 def new_target(app, ctx, data, kind):
     data["kind"] = kind
     app.set_state(ctx.chat_id, "a:nbody", data)
@@ -169,8 +186,9 @@ def st_ndl(app, ctx, msg, text, data):
         names = [r["name"] for r in app.conn.execute("SELECT name FROM groups WHERE id IN (%s)" % ",".join("?" * len(data["groups"])), data["groups"])]
         tgt = "گروه: " + "، ".join(names)
     desc = "\n".join(data["desc"]) or "—"
+    pts = f" (⭐ {fa(data.get('points', 0))} امتیاز)" if data["kind"] == "bonus" else ""
     app.send(ctx.chat_id,
-             f"🔎 پیش‌نمایش تکلیف\n\nعنوان: {data['title']}\nنوع: {R.KIND_LABEL[data['kind']]}\nمخاطب: {tgt}\n"
+             f"🔎 پیش‌نمایش تکلیف\n\nعنوان: {data['title']}\nنوع: {R.KIND_LABEL[data['kind']]}{pts}\nمخاطب: {tgt}\n"
              f"مهلت: {J.fmt(ts)}\nتاخیر مجاز: {fa(app.cfg.grace_minutes)} دقیقه | ارسال با تاخیر تا {fa(app.cfg.late_window_hours)} ساعت\n"
              f"فایل‌ها: {fa(len(data['files']))}\n\nمتن:\n{desc}",
              [[btn("✅ انتشار و اطلاع به دانش‌آموزان", "a:npub:1")], [btn("📌 انتشار بدون اطلاع", "a:npub:0")],
@@ -183,10 +201,11 @@ def publish(app: App, ctx: Ctx, notify: bool):
         app.send(ctx.chat_id, "تکلیف آماده‌ی انتشاری نیست.", HOME)
         return
     cur = app.conn.execute(
-        "INSERT INTO assignments(title,description,kind,deadline_ts,grace_min,late_hours,target_all,created_ts) "
-        "VALUES(?,?,?,?,?,?,?,?)",
+        "INSERT INTO assignments(title,description,kind,deadline_ts,grace_min,late_hours,target_all,created_ts,points) "
+        "VALUES(?,?,?,?,?,?,?,?,?)",
         (d["title"], "\n".join(d["desc"]), d["kind"], d["deadline"], app.cfg.grace_minutes,
-         app.cfg.late_window_hours, 1 if d.get("target_all", True) else 0, app.now()))
+         app.cfg.late_window_hours, 1 if d.get("target_all", True) else 0, app.now(),
+         int(d.get("points", 0)) if d["kind"] == "bonus" else 0))
     aid = cur.lastrowid
     for gid in d.get("groups", []):
         app.conn.execute("INSERT OR IGNORE INTO assignment_groups VALUES(?,?)", (aid, gid))
@@ -253,7 +272,7 @@ def aview(app: App, ctx: Ctx, aid: int):
     c = tally(app, a)
     total = sum(len(v) for v in c.values())
     desc = f"\n\n{a['description']}" if a["description"] else ""
-    text = (f"{R.KIND_ICON[a['kind']]} {a['title']}\nنوع: {R.KIND_LABEL[a['kind']]} | مخاطب: {target_text(app, a)}\n"
+    text = (f"{R.KIND_ICON[a['kind']]} {a['title']}\nنوع: {R.KIND_LABEL[a['kind']]}{(' | ⭐ ' + fa(a['points']) + ' امتیاز') if a['kind'] == 'bonus' else ''} | مخاطب: {target_text(app, a)}\n"
             f"⏰ مهلت: {J.fmt(a['deadline_ts'])}\nتاخیر مجاز: {fa(a['grace_min'])} دقیقه | ارسال با تاخیر تا {fa(a['late_hours'])} ساعت{desc}\n\n"
             f"✅ به‌موقع: {fa(len(c['on_time']))}   ⏰ با تاخیر: {fa(len(c['late']))}\n"
             f"❌ ارسال‌نشده: {fa(len(c['none']))}   🙏 عذر موجه: {fa(len(c['excused']))}\n(از {fa(total)} نفر)")
@@ -380,7 +399,14 @@ def st_aedit(app, ctx, msg, text, data):
     if not raw:
         app.send(ctx.chat_id, "متن را بنویس.")
         return
-    col = "title" if data["field"] == "t" else "description"
+    if data["field"] == "p":
+        v = en(raw).strip()
+        if not v.isdigit() or not (1 <= int(v) <= 1000):
+            app.send(ctx.chat_id, "یک عدد بین ۱ تا ۱۰۰۰ بنویس.")
+            return
+        col, raw = "points", int(v)
+    else:
+        col = "title" if data["field"] == "t" else "description"
     app.conn.execute(f"UPDATE assignments SET {col}=? WHERE id=?", (raw, data["aid"]))
     app.conn.commit()
     app.audit(ctx.user_id, "assignment_edit", f"{data['aid']}:{col}")
@@ -397,7 +423,7 @@ def st_aexc(app, ctx, msg, text, data):
     app.audit(ctx.user_id, "excuse", f"{a['id']}:{s['id']}")
     app.clear_state(ctx.chat_id)
     tell(app, s["id"], f"🙏 برای تکلیف «{a['title']}» عذر موجهت ثبت شد و روی شمارنده‌ی نشانت اثر منفی ندارد.")
-    notify_new_badges(app, s["id"], R.award_auto(app.conn, s["id"], app.now(), app.cfg.streak_size))
+    notify_new_badges(app, s["id"], app.award(s["id"]))
     app.send(ctx.chat_id, f"✅ عذر موجه برای {s['full_name']} ثبت شد.", [[btn("⬅ بازگشت", f"a:as:{a['id']}")]])
 
 
@@ -422,7 +448,7 @@ def slist(app: App, ctx: Ctx, offset: int):
     rows = []
     for s in studs:
         mark = "⏸" if not s["active"] else ("✔" if s["chat_id"] else "🕓")
-        rows.append([btn(f"{mark} {s['full_name']}", f"a:st:{s['id']}")])
+        rows.append([btn(f"{mark} {s['full_name']} ({'نهم' if s['grade'] == 9 else 'ششم'})", f"a:st:{s['id']}")])
     nav = []
     if offset > 0:
         nav.append(btn("◀ قبلی", f"a:slist:{max(0, offset - step)}"))
@@ -448,13 +474,14 @@ def st_sadd(app, ctx, msg, text, data):
         app.send(ctx.chat_id, "حداقل یک نام بنویس.")
         return
     out = []
+    grade = 9 if data.get("grade") == 9 else 6
     for line in lines:
         name, _, grp = line.partition("|")
         name, grp = clean(name), clean(grp)
         if not name:
             continue
         code = new_code(app)
-        cur = app.conn.execute("INSERT INTO students(full_name,code,created_ts) VALUES(?,?,?)", (name, code, app.now()))
+        cur = app.conn.execute("INSERT INTO students(full_name,code,created_ts,grade) VALUES(?,?,?,?)", (name, code, app.now(), grade))
         if grp:
             app.conn.execute("INSERT OR IGNORE INTO groups(name) VALUES(?)", (grp,))
             gid = app.conn.execute("SELECT id FROM groups WHERE name=?", (grp,)).fetchone()["id"]
@@ -473,7 +500,7 @@ def codes(app: App, ctx: Ctx):
         app.send(ctx.chat_id, "دانش‌آموزی نیست.", HOME)
         return
     app.send_long(ctx.chat_id, "🔑 کدهای ورود (محرمانه)\n\n" + "\n".join(
-        f"{s['full_name']} — {fa(s['code'])} {'✔' if s['chat_id'] else '🕓'}" for s in rows), [[btn("⬅ بازگشت", "a:slist:0")]])
+        f"{s['full_name']} ({'نهم' if s['grade'] == 9 else 'ششم'}) — {fa(s['code'])} {'✔' if s['chat_id'] else '🕓'}" for s in rows), [[btn("⬅ بازگشت", "a:slist:0")]])
 
 
 def sview(app: App, ctx: Ctx, sid: int):
@@ -483,9 +510,17 @@ def sview(app: App, ctx: Ctx, sid: int):
         return
     text = (f"👤 {s['full_name']}\nگروه‌ها: {reports.group_names(app.conn, sid) or '—'}\n"
             f"وضعیت: {'فعال' if s['active'] else 'غیرفعال'} | ورود به بات: {'انجام شده' if s['chat_id'] else 'هنوز نه'}")
-    rows = [[btn("📊 گزارش کامل", f"a:strep:{sid}"), btn("💬 بازخورد", f"a:fbs:{sid}")],
-            [btn("🗂 گروه‌ها", f"a:stgrp:{sid}"), btn("🏅 نشان دستی", f"a:bds:{sid}")],
-            [btn("📥 همه‌ی پاسخ‌هایش", f"a:stzip:{sid}"), btn("✏ تغییر نام", f"a:stname:{sid}")],
+    text += f"\nپایه: {'نهم' if s['grade'] == 9 else 'ششم'}"
+    if s["grade"] == 9:
+        top = [[btn("📊 گزارش کامل", f"a:strep:{sid}"), btn("💬 بازخورد", f"a:fbs:{sid}")],
+               [btn("📖 گزارش‌های مطالعه", f"a:book:st:{sid}")]]
+    else:
+        top = [[btn("📊 گزارش کامل", f"a:strep:{sid}"), btn("💬 بازخورد", f"a:fbs:{sid}")],
+               [btn("🗂 گروه‌ها", f"a:stgrp:{sid}"), btn("🏅 مدیریت نشان‌ها", f"a:sbd:{sid}")],
+               [btn("⭐ امتیاز", f"a:spts:{sid}")]]
+    rows = top + [
+            [btn("📥 همه‌ی پاسخ‌هایش", f"a:stzip:{sid}"), btn("✏ تغییر نام", f"a:stname:{sid}")] if s["grade"] != 9 else
+            [btn("✏ تغییر نام", f"a:stname:{sid}")],
             [btn("🔑 کد جدید (بازنشانی ورود)", f"a:streset:{sid}")],
             [btn("▶ فعال‌سازی" if not s["active"] else "⏸ غیرفعال‌سازی", f"a:sttog:{sid}")],
             [btn("⬅ فهرست", "a:slist:0")]]
@@ -695,7 +730,7 @@ def st_fb(app, ctx, msg, text, data):
 
 # ---------- پیام همگانی ----------
 def bc_start(app, ctx):
-    rows = [[btn("🌐 همه‌ی دانش‌آموزان", "a:bct:all")]]
+    rows = [[btn("🌐 همه‌ی دانش‌آموزان", "a:bct:all")], [btn("پایه‌ی ششم", "a:bct:g6"), btn("پایه‌ی نهم", "a:bct:g9")]]
     for g in app.conn.execute("SELECT * FROM groups ORDER BY name"):
         rows.append([btn(f"🗂 {g['name']}", f"a:bct:{g['id']}")])
     rows.append([btn("⬅ پنل مدیریت", "a:menu")])
@@ -705,6 +740,8 @@ def bc_start(app, ctx):
 def bc_recipients(app, target):
     if target == "all":
         return app.conn.execute("SELECT * FROM students WHERE active=1 AND chat_id IS NOT NULL").fetchall()
+    if target in ("g6", "g9"):
+        return app.conn.execute("SELECT * FROM students WHERE active=1 AND chat_id IS NOT NULL AND grade=?", (int(target[1:]),)).fetchall()
     return app.conn.execute("SELECT s.* FROM students s JOIN student_groups sg ON sg.student_id=s.id "
                             "WHERE sg.group_id=? AND s.active=1 AND s.chat_id IS NOT NULL", (int(target),)).fetchall()
 
@@ -803,6 +840,8 @@ STATE_HANDLERS = {
     "a:aextv": st_aextv, "a:aext1v": st_aext1v, "a:aedit": st_aedit, "a:aexc": st_aexc, "a:ars": st_ars,
     "a:sadd": st_sadd, "a:stname": st_stname, "a:gnew": st_gnew, "a:fb": st_fb, "a:bct": st_bct,
     "a:bds": st_bds, "a:admadd": st_admadd,
+    "a:npts": st_npts, "a:padj": points.st_padj, "a:sbde": points.st_sbde,
+    "a:bke": books.st_edit_book, "a:bkp": books.st_edit_pages,
 }
 
 
@@ -833,7 +872,14 @@ def on_callback(app: App, ctx: Ctx, parts):
     elif c == "nb" and state == "a:nbody":
         new_kind(app, ctx)
     elif c == "nk" and state == "a:nbody":
-        new_target(app, ctx, data, arg[0])
+        if arg[0] == "bonus":
+            ask_points(app, ctx, data)
+        else:
+            data["points"] = 0
+            new_target(app, ctx, data, arg[0])
+    elif c == "np" and state in ("a:npts", "a:nbody"):
+        data["points"] = i(0)
+        new_target(app, ctx, data, "bonus")
     elif c == "nt" and state == "a:nbody":
         if arg[0] == "all":
             data["target_all"], data["groups"] = True, []
@@ -890,7 +936,10 @@ def on_callback(app: App, ctx: Ctx, parts):
         app.set_state(ctx.chat_id, "a:aext1v", {"aid": i(0), "sid": i(1)})
         app.send(ctx.chat_id, f"⏱ مهلت جدید {app.student(i(1))['full_name']} را بنویس.\n\n" + J.DATE_HELP)
     elif c == "aedit":
-        app.show(ctx, "کدام را ویرایش کنم؟", [[btn("✏ عنوان", f"a:aedf:{i(0)}:t"), btn("📝 متن تکلیف", f"a:aedf:{i(0)}:d")], [btn("⬅ بازگشت", f"a:as:{i(0)}")]])
+        rows = [[btn("✏ عنوان", f"a:aedf:{i(0)}:t"), btn("📝 متن تکلیف", f"a:aedf:{i(0)}:d")]]
+        if app.assignment(i(0))["kind"] == "bonus":
+            rows.append([btn("⭐ امتیاز", f"a:aedf:{i(0)}:p")])
+        app.show(ctx, "کدام را ویرایش کنم؟", rows + [[btn("⬅ بازگشت", f"a:as:{i(0)}")]])
     elif c == "aedf":
         app.set_state(ctx.chat_id, "a:aedit", {"aid": i(0), "field": arg[1]})
         app.send(ctx.chat_id, "متن جدید را بنویس:")
@@ -925,8 +974,13 @@ def on_callback(app: App, ctx: Ctx, parts):
     elif c == "slist":
         slist(app, ctx, i(0))
     elif c == "sadd":
-        app.set_state(ctx.chat_id, "a:sadd", {})
-        app.send(ctx.chat_id, "نام دانش‌آموزان را بفرست؛ هر نفر در یک خط.\nاگر می‌خواهی هم‌زمان گروهش را بدهی بنویس: «نام | گروه»\n(حداکثر ۶۰ نفر در هر پیام)")
+        if not arg:
+            app.show(ctx, "دانش‌آموزان کدام پایه را اضافه می‌کنی؟\n(پایه‌ی ششم: تکالیف | پایه‌ی نهم: باشگاه کتابخوانی)",
+                     [[btn("پایه‌ی ششم", "a:sadd:6"), btn("پایه‌ی نهم", "a:sadd:9")], [btn("⬅ فهرست", "a:slist:0")]])
+        else:
+            app.set_state(ctx.chat_id, "a:sadd", {"grade": 9 if arg[0] == "9" else 6})
+            app.send(ctx.chat_id, f"نام دانش‌آموزان «پایه‌ی {'نهم' if arg[0] == '9' else 'ششم'}» را بفرست؛ هر نفر در یک خط."
+                                  "\nاگر می‌خواهی هم‌زمان گروهش را بدهی بنویس: «نام | گروه»\n(حداکثر ۶۰ نفر در هر پیام)")
     elif c == "codes":
         codes(app, ctx)
     elif c == "st":
@@ -970,7 +1024,7 @@ def on_callback(app: App, ctx: Ctx, parts):
     elif c == "rxlsx":
         rep_xlsx(app, ctx)
     elif c == "rone":
-        studs = app.conn.execute("SELECT * FROM students WHERE active=1 ORDER BY full_name").fetchall()
+        studs = app.conn.execute("SELECT * FROM students WHERE active=1 ORDER BY grade, full_name").fetchall()
         app.show(ctx, "گزارش کدام دانش‌آموز؟", student_buttons(studs, "a:strep") + [[btn("⬅ گزارش‌ها", "a:rep")]])
     elif c == "rrecent":
         rep_recent(app, ctx)
@@ -989,7 +1043,7 @@ def on_callback(app: App, ctx: Ctx, parts):
         bc_send(app, ctx)
     # نشان دستی
     elif c == "badge":
-        studs = app.conn.execute("SELECT * FROM students WHERE active=1 ORDER BY full_name").fetchall()
+        studs = app.conn.execute("SELECT * FROM students WHERE active=1 AND grade=6 ORDER BY full_name").fetchall()
         app.show(ctx, "نشان به چه کسی داده شود؟", student_buttons(studs, "a:bds") + [[btn("⬅ پنل مدیریت", "a:menu")]])
     elif c == "bds":
         app.set_state(ctx.chat_id, "a:bds", {"sid": i(0)})
@@ -999,6 +1053,31 @@ def on_callback(app: App, ctx: Ctx, parts):
         web_login(app, ctx)
     elif c == "adm":
         adm_view(app, ctx)
+    # باشگاه کتابخوانی، امتیاز و نشان‌ها
+    elif c == "book":
+        books.admin_callback(app, ctx, arg)
+    elif c == "pts":
+        points.pending_view(app, ctx, i(0) if arg else 0)
+    elif c == "pok":
+        points.approve(app, ctx, i(0))
+    elif c == "pno":
+        points.reject(app, ctx, i(0))
+    elif c == "pall":
+        points.approve_all(app, ctx)
+    elif c == "spts":
+        points.student_points(app, ctx, i(0))
+    elif c == "padj":
+        app.set_state(ctx.chat_id, "a:padj", {"sid": i(0)})
+        app.send(ctx.chat_id, "تغییر امتیاز را بنویس: عدد (با + یا −) و دلیل.\nمثال: +5 مشارکت عالی در کلاس\nیا: -3 بی‌نظمی")
+    elif c == "sbd":
+        points.badges_view(app, ctx, i(0))
+    elif c == "sbde":
+        app.set_state(ctx.chat_id, "a:sbde", {"bid": i(0)})
+        app.send(ctx.chat_id, "عنوان جدید نشان را بنویس:")
+    elif c == "sbdd":
+        points.badge_delete(app, ctx, i(0), False)
+    elif c == "sbddy":
+        points.badge_delete(app, ctx, i(0), True)
     elif c == "admadd":
         app.set_state(ctx.chat_id, "a:admadd", {})
         app.send(ctx.chat_id, "شناسه‌ی عددی بله‌ی مدیر جدید را بنویس (با /myid در بات گرفته می‌شود):")

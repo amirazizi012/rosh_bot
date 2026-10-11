@@ -7,7 +7,7 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     DATA_DIR=/data \
     PANEL_HOST=0.0.0.0 \
-    PANEL_PORT=8080
+    PANEL_PORT=8090
 
 WORKDIR /app
 COPY requirements.txt .
@@ -19,6 +19,6 @@ COPY assets ./assets
 # پوشه‌ی داده؛ دیسک دائمی پلتفرم باید روی /data وصل شود
 RUN mkdir -p /data
 VOLUME ["/data"]
-EXPOSE 8080
+EXPOSE 8090
 
 CMD ["python", "-m", "app.main"]

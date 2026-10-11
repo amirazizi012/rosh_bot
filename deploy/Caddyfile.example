@@ -1,5 +1,5 @@
 # HTTPS خودکار با Caddy؛ دامنه‌ی خودتان را جایگزین کنید.
 # در .env: PANEL_URL=https://panel.example.ir  و  PANEL_SECURE_COOKIE=1  و  PANEL_TRUST_PROXY=1
 panel.example.ir {
-    reverse_proxy 127.0.0.1:8080
+    reverse_proxy 127.0.0.1:8090
 }
