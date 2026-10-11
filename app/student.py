@@ -22,9 +22,12 @@ ALLOWED_EXT = {".jpg", ".jpeg", ".png", ".webp", ".heic", ".pdf"}
 def ask_code(app: App, ctx: Ctx):
     app.set_state(ctx.chat_id, "s:code", {})
     logo = Path(__file__).resolve().parent.parent / "assets" / "logo.png"
-    welcome = ("به بات تکالیف «مجموعه تربیتی، آموزشی رشد» خوش آمدی 🌱\n\n"
+    welcome = ("به بات اختصاصی «مجموعه تربیتی، آموزشی رشد» خوش آمدی 🌱\n\n"
                "برای ورود، «کد ۶ رقمی شخصی‌ات» را بفرست.\n"
-               "کد را نداری؟ از مدیر مجموعه بگیر.")
+               "کد را نداری؟ از مسئول پایه ات بگیر\n\n."
+               "🔔 البته پیش‌نیازش اینه که عضو مجموعه رشد باشی 😉\n"
+               "🔗 * [عضویت در مجموعه تربیتی‌آموزشی رشد](https://survey.porsline.ir/s/eHN8ueaU) *\n"
+               "📭 *[کانال مجموعه رشد](https://ble.ir/kanoon_roshd)*")
     if logo.exists():
         try:
             app.bale.send_photo(ctx.chat_id, logo, welcome)
