@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS students(
   active INTEGER NOT NULL DEFAULT 1,
   created_ts INTEGER NOT NULL,
   joined_ts INTEGER,
-  grade INTEGER NOT NULL DEFAULT 6            -- پایه: ۶ یا ۹
+  grade INTEGER NOT NULL DEFAULT 6,           -- پایه: ۶ یا ۹
+  username TEXT                               -- یوزرنیم بله (حروف کوچک، بدون @)؛ برای ورود
 );
 CREATE TABLE IF NOT EXISTS student_groups(
   student_id INTEGER NOT NULL, group_id INTEGER NOT NULL,
@@ -110,6 +111,9 @@ CREATE TABLE IF NOT EXISTS badge_blocks(
   student_id INTEGER NOT NULL, code TEXT NOT NULL, key TEXT NOT NULL,
   PRIMARY KEY(student_id, code, key)
 );
+CREATE TABLE IF NOT EXISTS login_attempts(
+  chat_id INTEGER PRIMARY KEY, username TEXT, name TEXT, last_ts INTEGER NOT NULL, count INTEGER NOT NULL DEFAULT 1
+);
 CREATE TABLE IF NOT EXISTS known_groups(chat_id INTEGER PRIMARY KEY, title TEXT, last_seen_ts INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS web_logins(
   code_hash TEXT PRIMARY KEY, admin_id INTEGER NOT NULL,
@@ -144,3 +148,7 @@ def migrate(conn):
         conn.execute("ALTER TABLE students ADD COLUMN grade INTEGER NOT NULL DEFAULT 6")
     if "points" not in _cols(conn, "assignments"):
         conn.execute("ALTER TABLE assignments ADD COLUMN points INTEGER NOT NULL DEFAULT 0")
+    if "username" not in _cols(conn, "students"):
+        conn.execute("ALTER TABLE students ADD COLUMN username TEXT")
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ix_stu_username ON students(username) "
+                 "WHERE username IS NOT NULL AND username<>''")

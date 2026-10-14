@@ -22,6 +22,10 @@ def tick(app: App):
         daily_backup(app)
     except Exception:
         log.exception("خطا در پشتیبان‌گیری")
+    try:
+        cleanup_exports(app)
+    except Exception:
+        log.exception("خطا در پاک‌سازی فایل‌های موقت")
 
 
 def reminders(app: App):
@@ -45,6 +49,24 @@ def reminders(app: App):
             app.conn.commit()
             app.send(s["chat_id"], f"⏰ یادآوری: تکلیف «{a['title']}» تا {J.fmt(dl)} مهلت دارد.",
                      [[btn("📖 باز کردن تکلیف", f"s:a:{a['id']}")]])
+
+
+def cleanup_exports(app: App, max_age_hours: int = 24):
+    """ZIP و اکسل‌هایی که برای ارسال به مدیر ساخته می‌شوند فقط موقتی‌اند؛ بعد از یک روز پاک می‌شوند تا دیسک پر نشود."""
+    import shutil
+    folder = app.data / "exports"
+    if not folder.exists():
+        return 0
+    limit = app.now() - max_age_hours * 3600
+    n = 0
+    for p in folder.iterdir():
+        try:
+            if p.stat().st_mtime < limit:
+                shutil.rmtree(p, ignore_errors=True) if p.is_dir() else p.unlink(missing_ok=True)
+                n += 1
+        except OSError:
+            continue
+    return n
 
 
 def daily_backup(app: App):

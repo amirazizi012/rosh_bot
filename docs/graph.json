@@ -1,0 +1,765 @@
+{
+  "generated_at": "2026-10-13T23:21:12+00:00",
+  "generator": "scripts/map.py",
+  "modules": [
+    {
+      "file": "app/admin.py",
+      "lines": 1192,
+      "functions": [
+        "menu",
+        "student_buttons",
+        "tell",
+        "notify_new_badges",
+        "open_btn",
+        "notify_assignment",
+        "target_text",
+        "group_rows_toggle",
+        "new_start",
+        "st_ntitle",
+        "st_nbody",
+        "new_kind",
+        "ask_points",
+        "st_npts",
+        "new_target",
+        "ask_deadline",
+        "st_ndl",
+        "publish",
+        "new_cancel",
+        "alist",
+        "tally",
+        "aview",
+        "astatus",
+        "aview_pick",
+        "asub_view",
+        "azip",
+        "aremind",
+        "ask_ext_all",
+        "st_aextv",
+        "st_aext1v",
+        "st_aedit",
+        "st_aexc",
+        "st_ars",
+        "slist",
+        "new_code",
+        "parse_student_line",
+        "st_sadd",
+        "codes",
+        "st_uns",
+        "st_stun",
+        "login_fails",
+        "sview",
+        "stgrp",
+        "stg_toggle",
+        "st_stname",
+        "streset",
+        "sttog",
+        "stzip",
+        "glist",
+        "st_gnew",
+        "gview",
+        "gmembers",
+        "gt_toggle",
+        "gdel",
+        "rep_menu",
+        "rep_xlsx",
+        "rep_recent",
+        "rep_badges",
+        "strep",
+        "ask_feedback",
+        "st_fb",
+        "bc_start",
+        "bc_recipients",
+        "st_bct",
+        "bc_send",
+        "st_bds",
+        "adm_view",
+        "st_admadd",
+        "web_login",
+        "on_message",
+        "_pending",
+        "on_callback"
+      ],
+      "classes": [],
+      "imports_internal": [
+        "bale",
+        "books",
+        "core",
+        "fa",
+        "jalali",
+        "points",
+        "reports",
+        "rules",
+        "student",
+        "usernames"
+      ],
+      "entry_point": false
+    },
+    {
+      "file": "app/bale.py",
+      "lines": 120,
+      "functions": [
+        "btn",
+        "keyboard"
+      ],
+      "classes": [
+        "BaleError",
+        "Bale"
+      ],
+      "imports_internal": [],
+      "entry_point": false
+    },
+    {
+      "file": "app/books.py",
+      "lines": 411,
+      "functions": [
+        "md_safe",
+        "pair_label",
+        "report_text",
+        "recent_pairs",
+        "_int",
+        "prev_books",
+        "has_report",
+        "group_id",
+        "post_report",
+        "record_group",
+        "start",
+        "_choose_pair",
+        "_ask_from",
+        "_preview",
+        "on_callback",
+        "on_message",
+        "home",
+        "finish",
+        "mine",
+        "a_menu",
+        "a_group_pick",
+        "set_group",
+        "_report_line",
+        "a_list",
+        "a_view",
+        "st_edit_book",
+        "st_edit_pages",
+        "admin_callback"
+      ],
+      "classes": [],
+      "imports_internal": [
+        "bale",
+        "core",
+        "fa",
+        "jalali",
+        "reports  # noqa: E402"
+      ],
+      "entry_point": false
+    },
+    {
+      "file": "app/config.py",
+      "lines": 82,
+      "functions": [
+        "load_env",
+        "_int",
+        "load"
+      ],
+      "classes": [
+        "Config"
+      ],
+      "imports_internal": [],
+      "entry_point": false
+    },
+    {
+      "file": "app/core.py",
+      "lines": 152,
+      "functions": [
+        "_admin_ids",
+        "_get_setting",
+        "_set_setting"
+      ],
+      "classes": [
+        "Ctx",
+        "App"
+      ],
+      "imports_internal": [
+        "bale"
+      ],
+      "entry_point": false
+    },
+    {
+      "file": "app/db.py",
+      "lines": 155,
+      "functions": [
+        "connect",
+        "_cols",
+        "migrate"
+      ],
+      "classes": [],
+      "imports_internal": [],
+      "entry_point": false
+    },
+    {
+      "file": "app/fa.py",
+      "lines": 38,
+      "functions": [
+        "fa",
+        "en",
+        "clean",
+        "duration"
+      ],
+      "classes": [],
+      "imports_internal": [],
+      "entry_point": false
+    },
+    {
+      "file": "app/jalali.py",
+      "lines": 137,
+      "functions": [
+        "g2j",
+        "j2g",
+        "to_dt",
+        "jdate",
+        "weekday_name",
+        "fmt",
+        "fmt_short",
+        "from_jalali",
+        "parse",
+        "noon",
+        "parse_date"
+      ],
+      "classes": [],
+      "imports_internal": [
+        "fa"
+      ],
+      "entry_point": false
+    },
+    {
+      "file": "app/main.py",
+      "lines": 79,
+      "functions": [
+        "needs_pause",
+        "start_panel",
+        "run"
+      ],
+      "classes": [],
+      "imports_internal": [
+        "bale",
+        "config",
+        "core",
+        "db",
+        "router",
+        "scheduler"
+      ],
+      "entry_point": true
+    },
+    {
+      "file": "app/panel.py",
+      "lines": 427,
+      "functions": [
+        "open_ro",
+        "code_hash",
+        "make_server",
+        "run"
+      ],
+      "classes": [
+        "Store",
+        "PanelServer",
+        "Handler"
+      ],
+      "imports_internal": [
+        "config",
+        "fa",
+        "jalali",
+        "panel_ui",
+        "reports"
+      ],
+      "entry_point": true
+    },
+    {
+      "file": "app/panel_ui.py",
+      "lines": 487,
+      "functions": [
+        "esc",
+        "has_logo",
+        "_fa_node",
+        "persian_digits",
+        "layout",
+        "login_page",
+        "chip",
+        "stat_bar",
+        "progress",
+        "table",
+        "link",
+        "students_active",
+        "groups_of",
+        "tally",
+        "files_html",
+        "dashboard",
+        "_uname",
+        "students_page",
+        "student_page",
+        "assignments_page",
+        "assignment_page",
+        "badges_page",
+        "feedback_page",
+        "audit_page",
+        "not_found",
+        "_pair",
+        "student_book_page",
+        "books_page",
+        "points_page"
+      ],
+      "classes": [],
+      "imports_internal": [
+        "fa",
+        "jalali",
+        "reports",
+        "rules"
+      ],
+      "entry_point": false
+    },
+    {
+      "file": "app/points.py",
+      "lines": 147,
+      "functions": [
+        "tell",
+        "pending_view",
+        "_decide",
+        "approve",
+        "reject",
+        "approve_all",
+        "student_points",
+        "st_padj",
+        "badges_view",
+        "badge_delete",
+        "st_sbde"
+      ],
+      "classes": [],
+      "imports_internal": [
+        "bale",
+        "core",
+        "fa",
+        "jalali",
+        "rules"
+      ],
+      "entry_point": false
+    },
+    {
+      "file": "app/reports.py",
+      "lines": 302,
+      "functions": [
+        "safe_name",
+        "cell_text",
+        "group_names",
+        "class_lines",
+        "student_report",
+        "build_xlsx",
+        "_final_files",
+        "build_zips",
+        "week_start",
+        "_norm_book",
+        "book_stats",
+        "book_summary_text",
+        "student_book_report",
+        "_xl_style",
+        "build_books_xlsx",
+        "_pair"
+      ],
+      "classes": [],
+      "imports_internal": [
+        "fa",
+        "jalali",
+        "rules"
+      ],
+      "entry_point": false
+    },
+    {
+      "file": "app/router.py",
+      "lines": 130,
+      "functions": [
+        "handle",
+        "_display",
+        "route_group",
+        "route_callback",
+        "route_message"
+      ],
+      "classes": [],
+      "imports_internal": [
+        "admin",
+        "bale",
+        "books",
+        "core",
+        "fa",
+        "student"
+      ],
+      "entry_point": false
+    },
+    {
+      "file": "app/rules.py",
+      "lines": 279,
+      "functions": [
+        "is_target",
+        "_closed_before_join",
+        "targets_for_student",
+        "target_students",
+        "effective_deadline",
+        "verdict",
+        "current_final",
+        "open_resubmit",
+        "is_excused",
+        "student_status",
+        "can_submit",
+        "finalize",
+        "streak_state",
+        "extra_streak_state",
+        "add_points",
+        "points_total",
+        "student_stats",
+        "give_badge",
+        "award_auto",
+        "describe_for_student"
+      ],
+      "classes": [],
+      "imports_internal": [
+        "fa"
+      ],
+      "entry_point": false
+    },
+    {
+      "file": "app/scheduler.py",
+      "lines": 88,
+      "functions": [
+        "tick",
+        "reminders",
+        "cleanup_exports",
+        "daily_backup"
+      ],
+      "classes": [],
+      "imports_internal": [
+        "bale",
+        "core",
+        "jalali",
+        "rules"
+      ],
+      "entry_point": false
+    },
+    {
+      "file": "app/student.py",
+      "lines": 491,
+      "functions": [
+        "notify_admins",
+        "learn_username",
+        "try_login",
+        "start_login",
+        "ask_code",
+        "on_code",
+        "home",
+        "list_open",
+        "list_done",
+        "progress",
+        "feedbacks",
+        "view_assignment",
+        "view_mine",
+        "start_edit",
+        "show_draft",
+        "remove_file",
+        "_purge_superseded",
+        "start_upload",
+        "_unlink_if_unreferenced",
+        "_discard_drafts",
+        "_extract",
+        "on_upload_message",
+        "finish",
+        "cancel",
+        "on_callback",
+        "on_message"
+      ],
+      "classes": [],
+      "imports_internal": [
+        "bale",
+        "core",
+        "fa",
+        "jalali",
+        "rules",
+        "usernames"
+      ],
+      "entry_point": false
+    },
+    {
+      "file": "app/usernames.py",
+      "lines": 16,
+      "functions": [
+        "normalize"
+      ],
+      "classes": [],
+      "imports_internal": [
+        "fa"
+      ],
+      "entry_point": false
+    }
+  ],
+  "tables": [
+    {
+      "table": "settings",
+      "columns": [
+        "key",
+        "value"
+      ]
+    },
+    {
+      "table": "admins",
+      "columns": [
+        "user_id",
+        "added_ts"
+      ]
+    },
+    {
+      "table": "groups",
+      "columns": [
+        "id",
+        "name"
+      ]
+    },
+    {
+      "table": "students",
+      "columns": [
+        "id",
+        "full_name",
+        "code",
+        "chat_id",
+        "active",
+        "created_ts",
+        "joined_ts",
+        "grade",
+        "username"
+      ]
+    },
+    {
+      "table": "student_groups",
+      "columns": [
+        "student_id",
+        "group_id"
+      ]
+    },
+    {
+      "table": "assignments",
+      "columns": [
+        "id",
+        "title",
+        "description",
+        "kind",
+        "deadline_ts",
+        "grace_min",
+        "late_hours",
+        "target_all",
+        "status",
+        "created_ts",
+        "points"
+      ]
+    },
+    {
+      "table": "assignment_groups",
+      "columns": [
+        "assignment_id",
+        "group_id"
+      ]
+    },
+    {
+      "table": "assignment_files",
+      "columns": [
+        "id",
+        "assignment_id",
+        "path",
+        "kind",
+        "name"
+      ]
+    },
+    {
+      "table": "student_deadlines",
+      "columns": [
+        "assignment_id",
+        "student_id",
+        "deadline_ts"
+      ]
+    },
+    {
+      "table": "excuses",
+      "columns": [
+        "assignment_id",
+        "student_id",
+        "reason",
+        "admin_id",
+        "ts"
+      ]
+    },
+    {
+      "table": "submissions",
+      "columns": [
+        "id",
+        "assignment_id",
+        "student_id",
+        "state",
+        "created_ts",
+        "submitted_ts",
+        "on_time",
+        "over_minutes",
+        "resubmit_of"
+      ]
+    },
+    {
+      "table": "submission_files",
+      "columns": [
+        "id",
+        "submission_id",
+        "path",
+        "name",
+        "size"
+      ]
+    },
+    {
+      "table": "resubmit_requests",
+      "columns": [
+        "assignment_id",
+        "student_id",
+        "note",
+        "ts",
+        "open"
+      ]
+    },
+    {
+      "table": "feedback",
+      "columns": [
+        "id",
+        "student_id",
+        "assignment_id",
+        "text",
+        "admin_id",
+        "ts"
+      ]
+    },
+    {
+      "table": "badges",
+      "columns": [
+        "id",
+        "student_id",
+        "code",
+        "key",
+        "title",
+        "awarded_ts",
+        "UNIQUE(student_id"
+      ]
+    },
+    {
+      "table": "reminders",
+      "columns": [
+        "assignment_id",
+        "student_id",
+        "kind"
+      ]
+    },
+    {
+      "table": "chat_state",
+      "columns": [
+        "chat_id",
+        "state",
+        "data"
+      ]
+    },
+    {
+      "table": "book_reports",
+      "columns": [
+        "id",
+        "student_id",
+        "day1_ts",
+        "day2_ts",
+        "book",
+        "from_page",
+        "to_page",
+        "pages",
+        "status",
+        "posted",
+        "created_ts",
+        "edited_ts"
+      ]
+    },
+    {
+      "table": "points_ledger",
+      "columns": [
+        "id",
+        "student_id",
+        "delta",
+        "reason",
+        "kind",
+        "source_code",
+        "source_key",
+        "status",
+        "created_ts",
+        "decided_ts",
+        "admin_id"
+      ]
+    },
+    {
+      "table": "badge_blocks",
+      "columns": [
+        "student_id",
+        "code",
+        "key"
+      ]
+    },
+    {
+      "table": "login_attempts",
+      "columns": [
+        "chat_id",
+        "username",
+        "name",
+        "last_ts",
+        "count"
+      ]
+    },
+    {
+      "table": "known_groups",
+      "columns": [
+        "chat_id",
+        "title",
+        "last_seen_ts"
+      ]
+    },
+    {
+      "table": "web_logins",
+      "columns": [
+        "code_hash",
+        "admin_id",
+        "created_ts",
+        "expires_ts"
+      ]
+    },
+    {
+      "table": "audit",
+      "columns": [
+        "id",
+        "ts",
+        "admin_id",
+        "action",
+        "details"
+      ]
+    }
+  ],
+  "entry_points": {
+    "bot": "app/main.py",
+    "panel": "app/panel.py",
+    "run_references": {
+      "Dockerfile": [
+        "CMD [\"python\", \"-m\", \"app.main\"]"
+      ],
+      "deploy/rosh-bot.service": [
+        "ExecStart=/opt/rosh_bot/venv/bin/python -m app.main"
+      ],
+      "deploy/rosh-panel.service": [
+        "ExecStart=/opt/rosh_bot/venv/bin/python -m app.panel"
+      ]
+    }
+  },
+  "tests": [
+    "tests/test_books.py",
+    "tests/test_flow.py",
+    "tests/test_login_edit.py",
+    "tests/test_panel.py",
+    "tests/test_rules.py"
+  ]
+}

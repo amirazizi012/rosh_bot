@@ -4,7 +4,11 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+import secrets
+import sqlite3
+
 from . import jalali as J
+from . import usernames
 from . import rules as R
 from .bale import BaleError, btn
 from .core import App, Ctx
@@ -18,16 +22,81 @@ BACK = [[btn("⬅ منوی اصلی", "s:home")]]
 ALLOWED_EXT = {".jpg", ".jpeg", ".png", ".webp", ".heic", ".pdf"}
 
 
-# ---------- ورود ----------
+# ---------- ورود با یوزرنیم ----------
+def notify_admins(app: App, text: str):
+    for aid in app.admin_ids():
+        app.send(aid, text)
+
+
+def learn_username(app: App, st, username):
+    """دانش‌آموزی که قبلاً وارد شده و یوزرنیمش در سیستم خالی است، یوزرنیمش خودکار ثبت می‌شود."""
+    u = usernames.normalize(username)
+    if not u or st["username"]:
+        return
+    if app.conn.execute("SELECT 1 FROM students WHERE username=?", (u,)).fetchone():
+        return
+    app.conn.execute("UPDATE students SET username=? WHERE id=?", (u, st["id"]))
+    app.conn.commit()
+
+
+def try_login(app: App, ctx: Ctx) -> bool:
+    """با یوزرنیم بله وارد می‌کند. خروجی True یعنی پاسخی (موفق یا خطا) به کاربر داده شده است."""
+    u = usernames.normalize(ctx.username)
+    if not u:
+        return False
+    st = app.conn.execute("SELECT * FROM students WHERE username=? AND active=1", (u,)).fetchone()
+    if not st:
+        return False
+    if st["chat_id"] and st["chat_id"] != ctx.chat_id:
+        app.send(ctx.chat_id, "این یوزرنیم قبلاً روی یک حساب دیگر فعال شده است. اگر حساب یا گوشی‌ات عوض شده، به مدیر بگو تا ورودت را بازنشانی کند.")
+        notify_admins(app, f"⚠️ تلاش ورود با یوزرنیم ثبت‌شده‌ی {st['full_name']} (@{u}) از یک حساب دیگر ({fa(ctx.chat_id)}).\n"
+                           "اگر خود دانش‌آموز است، «بازنشانی ورود» را از صفحه‌ی او بزن.")
+        return True
+    try:
+        app.conn.execute("UPDATE students SET chat_id=?, joined_ts=? WHERE id=?", (ctx.chat_id, app.now(), st["id"]))
+        app.conn.commit()
+    except sqlite3.IntegrityError:
+        app.send(ctx.chat_id, "این حساب بله قبلاً برای دانش‌آموز دیگری ثبت شده است. موضوع را به مدیر بگو.")
+        return True
+    app.conn.execute("DELETE FROM login_attempts WHERE chat_id=?", (ctx.chat_id,))
+    app.conn.commit()
+    app.clear_state(ctx.chat_id)
+    app.send(ctx.chat_id, f"خوش آمدی {st['full_name']} 🎉\nیوزرنیمت تأیید شد و وارد شدی.")
+    notify_admins(app, f"✅ {st['full_name']} ({'نهم' if st['grade'] == 9 else 'ششم'}) با @{u} وارد بات شد.")
+    home(app, ctx, app.student(st["id"]))
+    return True
+
+
+def start_login(app: App, ctx: Ctx):
+    if try_login(app, ctx):
+        return
+    u = usernames.normalize(ctx.username)
+    now = app.now()
+    app.conn.execute("INSERT INTO login_attempts(chat_id,username,name,last_ts,count) VALUES(?,?,?,?,1) "
+                     "ON CONFLICT(chat_id) DO UPDATE SET username=excluded.username, name=excluded.name, last_ts=excluded.last_ts, count=count+1",
+                     (ctx.chat_id, u, ctx.display_name, now))
+    app.conn.commit()
+    if app.cfg.login_mode == "both":
+        ask_code(app, ctx)
+        return
+    if not u:
+        app.send(ctx.chat_id, "به بات تکالیف «مجموعه تربیتی، آموزشی رشد» خوش آمدی 🌱\n\n"
+                              "برای ورود، حساب بله‌ی تو باید «یوزرنیم» داشته باشد. از تنظیمات پروفایل بله یک یوزرنیم بساز، "
+                              "آن را به مدیر مجموعه بده تا ثبت کند، و بعد دوباره /start را بزن.")
+    else:
+        app.send(ctx.chat_id, "به بات تکالیف «مجموعه تربیتی، آموزشی رشد» خوش آمدی 🌱\n\n"
+                              f"یوزرنیم بله‌ی تو «@{u}» است، ولی هنوز در فهرست مجموعه نیست.\n"
+                              "همین یوزرنیم را به مدیر بده تا ثبت کند، بعد دوباره /start را بزن.\n"
+                              "(اگر قبلاً داده‌ای و غلط تایپ شده، مدیر می‌تواند اصلاحش کند.)")
+
+
+# ---------- ورود با کد (فقط وقتی LOGIN_MODE=both) ----------
 def ask_code(app: App, ctx: Ctx):
     app.set_state(ctx.chat_id, "s:code", {})
     logo = Path(__file__).resolve().parent.parent / "assets" / "logo.png"
-    welcome = ("به بات اختصاصی «مجموعه تربیتی، آموزشی رشد» خوش آمدی 🌱\n\n"
+    welcome = ("به بات تکالیف «مجموعه تربیتی، آموزشی رشد» خوش آمدی 🌱\n\n"
                "برای ورود، «کد ۶ رقمی شخصی‌ات» را بفرست.\n"
-               "کد را نداری؟ از مسئول پایه ات بگیر\n\n."
-               "🔔 البته پیش‌نیازش اینه که عضو مجموعه رشد باشی 😉\n"
-               "🔗 * [عضویت در مجموعه تربیتی‌آموزشی رشد](https://survey.porsline.ir/s/eHN8ueaU) *\n"
-               "📭 *[کانال مجموعه رشد](https://ble.ir/kanoon_roshd)*")
+               "کد را نداری؟ از مدیر مجموعه بگیر.")
     if logo.exists():
         try:
             app.bale.send_photo(ctx.chat_id, logo, welcome)
@@ -90,16 +159,19 @@ def list_open(app: App, ctx: Ctx, st):
 
 
 def list_done(app: App, ctx: Ctx, st):
-    now, lines = app.now(), []
+    now, lines, rows = app.now(), [], []
     for a in reversed(R.targets_for_student(app.conn, st["id"])):
         s = R.student_status(app.conn, a, st["id"], now)
         if s["sub"]:
             mark = "✅" if s["code"] == "on_time" else f"⏰ ({duration(s['over'])} تاخیر)"
-            lines.append(f"{mark} {a['title']} — {J.fmt_short(s['sub']['submitted_ts'])}")
+            can, _ = R.can_submit(app.conn, a, st["id"], now)
+            editable = can and not R.open_resubmit(app.conn, a["id"], st["id"])
+            lines.append(f"{mark} {a['title']} — {J.fmt_short(s['sub']['submitted_ts'])}" + (" — ✏ قابل ویرایش" if editable else ""))
+            rows.append([btn(f"{'✏' if editable else '👁'} {a['title']}"[:50], f"s:a:{a['id']}")])
         elif s["code"] == "excused":
             lines.append(f"🙏 {a['title']} — عذر موجه")
-    text = "✅ ارسال‌های تو:\n\n" + "\n".join(lines[:40]) if lines else "هنوز چیزی ارسال نکرده‌ای."
-    app.show(ctx, text, BACK)
+    text = ("✅ ارسال‌های تو (برای دیدن یا ویرایش، تکلیف را بزن):\n\n" + "\n".join(lines[:40])) if lines else "هنوز چیزی ارسال نکرده‌ای."
+    app.show(ctx, text, rows[:20] + BACK)
 
 
 def progress(app: App, ctx: Ctx, st):
@@ -152,12 +224,89 @@ def view_assignment(app: App, ctx: Ctx, st, aid: int):
         lines.append(f"باقی‌مانده: {duration((dl - now) // 60)}")
     lines += [f"تاخیر مجاز: {fa(a['grace_min'])} دقیقه", "", R.describe_for_student(s, closes)]
     ok, _ = R.can_submit(app.conn, a, st["id"], now)
+    sub, req = s["sub"], R.open_resubmit(app.conn, aid, st["id"])
     rows = []
-    if ok:
-        label = "📤 ارسال پاسخ" if not s["sub"] else "🔁 ارسال پاسخ جدید"
-        rows.append([btn(label, f"s:send:{aid}")])
-    rows.append([btn("⬅ تکالیف باز", "s:open")])
+    if sub and not req and ok:
+        lines.append(f"✏ تا پایان مهلت ({J.fmt_short(dl)}) هر چند بار بخواهی می‌توانی پاسخت را ویرایش کنی.")
+        rows.append([btn("✏ ویرایش پاسخ", f"s:ed:{aid}"), btn("👁 دیدن پاسخ فعلی", f"s:vw:{aid}")])
+    elif sub:
+        rows.append([btn("👁 دیدن پاسخ فعلی", f"s:vw:{aid}")])
+    if ok and (not sub or req):
+        rows.append([btn("📤 ارسال پاسخ" if not sub else "🔁 ارسال پاسخ جدید", f"s:send:{aid}")])
+    rows.append([btn("⬅ تکالیف باز", "s:open"), btn("✅ ارسال‌های من", "s:done")])
     app.send(ctx.chat_id, "\n".join(lines), rows)
+
+
+def view_mine(app: App, ctx: Ctx, st, aid: int):
+    """پاسخ فعلی خود دانش‌آموز را دوباره نشان می‌دهد."""
+    sub = R.current_final(app.conn, aid, st["id"])
+    if not sub:
+        app.send(ctx.chat_id, "هنوز پاسخی برای این تکلیف نفرستاده‌ای.", BACK)
+        return
+    cap = f"پاسخ فعلی تو — ثبت: {J.fmt_short(sub['submitted_ts'])}"
+    for f in app.conn.execute("SELECT * FROM submission_files WHERE submission_id=? ORDER BY id", (sub["id"],)):
+        app.send_file(ctx.chat_id, f["path"], cap)
+        cap = None
+    app.send(ctx.chat_id, "این فایل‌ها پاسخ فعلی تو هستند.", [[btn("⬅ برگشت به تکلیف", f"s:a:{aid}")]])
+
+
+def start_edit(app: App, ctx: Ctx, st, aid: int):
+    """ویرایش پاسخ فعلی (افزودن/حذف فایل) تا پیش از پایان مهلت؛ هر چند بار."""
+    a = app.assignment(aid)
+    sub = R.current_final(app.conn, aid, st["id"]) if a else None
+    ok, why = R.can_submit(app.conn, a, st["id"], app.now()) if a else (False, "")
+    if not a or not sub or R.open_resubmit(app.conn, aid, st["id"]) or not ok:
+        app.send(ctx.chat_id, "⛔ " + (why or "الان نمی‌شود این پاسخ را ویرایش کرد. اگر مهلت تمام شده، با مدیر صحبت کن."), BACK)
+        return
+    _discard_drafts(app, aid, st["id"])
+    cur = app.conn.execute("INSERT INTO submissions(assignment_id,student_id,state,created_ts) VALUES(?,?,'draft',?)", (aid, st["id"], app.now()))
+    draft = cur.lastrowid
+    for f in app.conn.execute("SELECT path,name,size FROM submission_files WHERE submission_id=? ORDER BY id", (sub["id"],)).fetchall():
+        app.conn.execute("INSERT INTO submission_files(submission_id,path,name,size) VALUES(?,?,?,?)", (draft, f["path"], f["name"], f["size"]))
+    app.conn.commit()
+    data = {"aid": aid, "draft": draft, "edit": 1}
+    app.set_state(ctx.chat_id, "s:upload", data)
+    show_draft(app, ctx, st, data, "✏ حالت ویرایش روشن شد؛ پاسخ قبلی‌ات تا وقتی «ارسال نهایی» نزنی دست‌نخورده می‌ماند.")
+
+
+def show_draft(app: App, ctx: Ctx, st, data, note=""):
+    a = app.assignment(data["aid"])
+    files = app.conn.execute("SELECT * FROM submission_files WHERE submission_id=? ORDER BY id", (data["draft"],)).fetchall()
+    rows = [[btn(f"🗑 حذف فایل {fa(i)}" + (f" ({f['name'][:16]})" if f["name"] else ""), f"s:rm:{f['id']}")] for i, f in enumerate(files, 1)]
+    if len(files) > 1:
+        rows.append([btn("🗑 حذف همه (و فرستادن پاسخ تازه)", "s:rma")])
+    rows.append([btn("✅ ارسال نهایی", "s:fin"), btn("❌ لغو ویرایش", "s:cancel")])
+    app.send(ctx.chat_id, (note + "\n\n" if note else "") +
+             f"✏ ویرایش پاسخ «{a['title']}»\n📎 فایل‌های فعلی: {fa(len(files))}\n"
+             "• فایل (عکس یا PDF) تازه بفرست تا اضافه شود.\n• با دکمه‌های 🗑 فایل‌های اشتباه را حذف کن.\n"
+             "• وقتی تمام شد «ارسال نهایی» را بزن.", rows)
+
+
+def remove_file(app: App, ctx: Ctx, st, fid):
+    state, data = app.get_state(ctx.chat_id)
+    if state != "s:upload":
+        return
+    if fid is None:
+        app.conn.execute("DELETE FROM submission_files WHERE submission_id=?", (data["draft"],))
+    else:
+        app.conn.execute("DELETE FROM submission_files WHERE id=? AND submission_id=?", (fid, data["draft"]))
+    app.conn.commit()
+    show_draft(app, ctx, st, data) if data.get("edit") else app.send(ctx.chat_id, "حذف شد. فایل تازه بفرست یا «ارسال نهایی» را بزن.",
+                                                                    [[btn("✅ ارسال نهایی", "s:fin"), btn("❌ لغو", "s:cancel")]])
+
+
+def _purge_superseded(app: App, aid, sid):
+    """فایل‌های نسخه‌های قدیمی (جایگزین‌شده) که دیگر در پاسخ فعلی نیستند را پاک می‌کند تا دیسک پر نشود."""
+    keep = {r["path"] for r in app.conn.execute(
+        "SELECT f.path FROM submission_files f JOIN submissions s ON s.id=f.submission_id "
+        "WHERE s.assignment_id=? AND s.student_id=? AND s.state IN ('final','draft')", (aid, sid))}
+    for f in app.conn.execute(
+            "SELECT f.id, f.path FROM submission_files f JOIN submissions s ON s.id=f.submission_id "
+            "WHERE s.assignment_id=? AND s.student_id=? AND s.state='superseded'", (aid, sid)).fetchall():
+        if f["path"] not in keep:
+            Path(f["path"]).unlink(missing_ok=True)
+        app.conn.execute("DELETE FROM submission_files WHERE id=?", (f["id"],))
+    app.conn.commit()
 
 
 def start_upload(app: App, ctx: Ctx, st, aid: int):
@@ -181,11 +330,17 @@ def start_upload(app: App, ctx: Ctx, st, aid: int):
              [[btn("✅ ارسال نهایی", "s:fin"), btn("❌ لغو", "s:cancel")]])
 
 
+def _unlink_if_unreferenced(app: App, path, exclude_sub):
+    """فایل فقط وقتی پاک می‌شود که هیچ ارسال دیگری (مثلاً پاسخ فعلی در حال ویرایش) به آن اشاره نکند."""
+    if not app.conn.execute("SELECT 1 FROM submission_files WHERE path=? AND submission_id<>?", (path, exclude_sub)).fetchone():
+        Path(path).unlink(missing_ok=True)
+
+
 def _discard_drafts(app: App, aid, sid):
     for d in app.conn.execute("SELECT id FROM submissions WHERE assignment_id=? AND student_id=? AND state='draft'",
                               (aid, sid)).fetchall():
-        for f in app.conn.execute("SELECT path FROM submission_files WHERE submission_id=?", (d["id"],)):
-            Path(f["path"]).unlink(missing_ok=True)
+        for f in app.conn.execute("SELECT path FROM submission_files WHERE submission_id=?", (d["id"],)).fetchall():
+            _unlink_if_unreferenced(app, f["path"], d["id"])
         app.conn.execute("DELETE FROM submission_files WHERE submission_id=?", (d["id"],))
         app.conn.execute("DELETE FROM submissions WHERE id=?", (d["id"],))
     app.conn.commit()
@@ -224,7 +379,7 @@ def on_upload_message(app: App, ctx: Ctx, st, msg, data):
     if count >= app.cfg.max_files_per_submission:
         app.send(ctx.chat_id, f"حداکثر {fa(app.cfg.max_files_per_submission)} فایل در هر ارسال مجاز است. «ارسال نهایی» را بزن.", controls)
         return
-    dest = app.data / "submissions" / str(data["aid"]) / str(st["id"]) / f"{data['draft']}_{count + 1}{ext}"
+    dest = app.data / "submissions" / str(data["aid"]) / str(st["id"]) / f"{data['draft']}_{secrets.token_hex(4)}{ext}"
     try:
         real = app.bale.download(file_id, dest)
     except BaleError as e:
@@ -238,6 +393,9 @@ def on_upload_message(app: App, ctx: Ctx, st, msg, data):
     app.conn.execute("INSERT INTO submission_files(submission_id,path,name,size) VALUES(?,?,?,?)",
                      (data["draft"], str(dest), name, real))
     app.conn.commit()
+    if data.get("edit"):
+        show_draft(app, ctx, st, data, f"✅ فایل تازه اضافه شد.")
+        return
     app.send(ctx.chat_id, f"✅ فایل {fa(count + 1)} ذخیره شد. فایل دیگری هست؟ بفرست؛ وگرنه «ارسال نهایی» را بزن.", controls)
 
 
@@ -255,13 +413,19 @@ def finish(app: App, ctx: Ctx, st):
     now = app.now()
     try:
         on_time, over, was_req = R.finalize(app.conn, a, st["id"], data["draft"], now)
-    except ValueError:
+    except ValueError as e:
         app.clear_state(ctx.chat_id)
         _discard_drafts(app, a["id"], st["id"])
-        app.send(ctx.chat_id, "⛔ مهلت ارسال این تکلیف همین الان بسته شد. اگر دلیل موجهی داری با مدیر صحبت کن.", MENU)
+        if str(e) == "edit_closed":
+            app.send(ctx.chat_id, "⛔ مهلت ویرایش همین الان تمام شد. تغییرهای این‌بار ثبت نشد و پاسخ قبلی‌ات همان‌طور که بود حفظ شد.", MENU)
+        else:
+            app.send(ctx.chat_id, "⛔ مهلت ارسال این تکلیف همین الان بسته شد. اگر دلیل موجهی داری با مدیر صحبت کن.", MENU)
         return
     app.clear_state(ctx.chat_id)
-    if was_req:
+    _purge_superseded(app, a["id"], st["id"])
+    if data.get("edit") and not was_req:
+        head = "✅ ویرایش پاسخت ثبت شد (به‌موقع). تا پیش از مهلت هر چند بار بخواهی می‌توانی دوباره ویرایش کنی."
+    elif was_req:
         head = "🔁 پاسخ جدیدت جایگزین پاسخ قبلی شد."
     elif on_time and over == 0:
         head = "✅ پاسخت ثبت شد و به‌موقع بود. آفرین! 👏"
@@ -283,7 +447,7 @@ def cancel(app: App, ctx: Ctx, st):
     if state == "s:upload":
         _discard_drafts(app, data["aid"], st["id"])
     app.clear_state(ctx.chat_id)
-    app.send(ctx.chat_id, "ارسال لغو شد.", MENU)
+    app.send(ctx.chat_id, "ویرایش لغو شد؛ پاسخ قبلی‌ات دست‌نخورده است." if data.get("edit") else "ارسال لغو شد.", MENU)
 
 
 # ---------- مسیریابی ----------
@@ -308,6 +472,14 @@ def on_callback(app: App, ctx: Ctx, st, parts):
         finish(app, ctx, st)
     elif cmd == "cancel":
         cancel(app, ctx, st)
+    elif cmd == "ed":
+        start_edit(app, ctx, st, int(parts[2]))
+    elif cmd == "vw":
+        view_mine(app, ctx, st, int(parts[2]))
+    elif cmd == "rm":
+        remove_file(app, ctx, st, int(parts[2]))
+    elif cmd == "rma":
+        remove_file(app, ctx, st, None)
 
 
 def on_message(app: App, ctx: Ctx, st, msg):

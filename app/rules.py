@@ -124,6 +124,8 @@ def finalize(conn, a, sid, draft_id: int, now: int):
     req = open_resubmit(conn, a["id"], sid)
     if v == "closed" and not req:
         raise ValueError("closed")
+    if prev and not req and now > dl:
+        raise ValueError("edit_closed")   # مهلت ویرایش تمام شده؛ پاسخ قبلی دست‌نخورده می‌ماند
     if req and prev:
         # ارسال مجدد به درخواست مدیر، وضعیت زمانی ارسال اول را تغییر نمی‌دهد
         on_time, over_m = prev["on_time"], prev["over_minutes"]

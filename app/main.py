@@ -42,7 +42,9 @@ def run():
     app = App(cfg, bale, conn)
     bale.delete_webhook()
     start_panel(cfg)
-    log.info("بات «رشد» شروع به کار کرد. مدیران ثابت: %d", len(cfg.admin_ids))
+    import os
+    import socket
+    log.info("بات «رشد» شروع به کار کرد. مدیران ثابت: %d | نمونه: %s | pid: %d", len(cfg.admin_ids), socket.gethostname(), os.getpid())
     offset, last_tick = None, 0.0
     while True:
         try:

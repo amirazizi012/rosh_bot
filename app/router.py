@@ -20,7 +20,8 @@ def handle(app: App, u: dict):
         user = (cq.get("from") or {}).get("id")
         if chat is None or user is None:
             return
-        ctx = Ctx(chat, user, m.get("message_id"))
+        frm = cq.get("from") or {}
+        ctx = Ctx(chat, user, m.get("message_id"), frm.get("username"), _display(frm))
         app.bale.answer_callback(cq.get("id"))
         parts = (cq.get("data") or "").split(":")
         route_callback(app, ctx, parts)
@@ -34,7 +35,12 @@ def handle(app: App, u: dict):
         if ctype != "private":
             route_group(app, chat, user, msg)  # گروه: فقط شناسایی گروه و دستور /setgroup
             return
-        route_message(app, Ctx(chat, user), msg)
+        frm = msg.get("from") or {}
+        route_message(app, Ctx(chat, user, None, frm.get("username") or (msg.get("chat") or {}).get("username"), _display(frm)), msg)
+
+
+def _display(frm: dict) -> str:
+    return " ".join(x for x in ((frm.get("first_name") or "").strip(), (frm.get("last_name") or "").strip()) if x)
 
 
 def route_group(app: App, chat: int, user: int, msg: dict):
@@ -57,8 +63,9 @@ def route_callback(app: App, ctx: Ctx, parts):
     elif kind == "s":
         st = app.student_by_chat(ctx.chat_id)
         if not st:
-            student.ask_code(app, ctx)
+            student.start_login(app, ctx)
             return
+        student.learn_username(app, st, ctx.username)
         if st["grade"] == 9:  # نهمی‌ها فقط باشگاه کتابخوانی را دارند
             if parts[1:2] == ["home"]:
                 app.clear_state(ctx.chat_id)
@@ -68,7 +75,7 @@ def route_callback(app: App, ctx: Ctx, parts):
     elif kind == "b":
         st = app.student_by_chat(ctx.chat_id)
         if not st:
-            student.ask_code(app, ctx)
+            student.start_login(app, ctx)
         elif st["grade"] != 9:
             student.home(app, ctx, st)  # بخش کتابخوانی مخصوص پایه‌ی نهم است
         else:
@@ -77,6 +84,12 @@ def route_callback(app: App, ctx: Ctx, parts):
 
 def route_message(app: App, ctx: Ctx, msg: dict):
     text = (msg.get("text") or "").strip()
+    if text.startswith("/whoami") and app.is_admin(ctx.user_id):
+        # اگر یک پیام بیش از یک‌بار جواب داده شود، یعنی چند نمونه‌ی بات هم‌زمان روشن‌اند؛ نام هر نمونه فرق دارد
+        import os
+        import socket
+        app.send(ctx.chat_id, f"🤖 این پاسخ از نمونه‌ی «{socket.gethostname()}» (شناسه‌ی فرایند {os.getpid()}) است.")
+        return
     if text.startswith("/myid"):
         app.send(ctx.chat_id, f"شناسه‌ی عددی تو در بله: {ctx.user_id}\n(این عدد را به مدیر مجموعه بده تا دسترسی مدیر بگیری.)")
         return
@@ -95,21 +108,22 @@ def route_message(app: App, ctx: Ctx, msg: dict):
             return
         st = app.student_by_chat(ctx.chat_id)
         if st:
+            student.learn_username(app, st, ctx.username)
             student.home(app, ctx, st)
         else:
-            student.ask_code(app, ctx)
+            student.start_login(app, ctx)
         return
     if app.is_admin(ctx.user_id):
         admin.on_message(app, ctx, msg)
         return
     st = app.student_by_chat(ctx.chat_id)
     if st:
+        student.learn_username(app, st, ctx.username)
         if st["grade"] == 9:
             books.on_message(app, ctx, st, msg)
         else:
             student.on_message(app, ctx, st, msg)
+    elif app.cfg.login_mode == "both" and app.get_state(ctx.chat_id)[0] == "s:code":
+        student.on_code(app, ctx, text)       # حالت «هر دو»: کد ۶ رقمی هم قبول است
     else:
-        state, _ = app.get_state(ctx.chat_id)
-        if state != "s:code":
-            app.set_state(ctx.chat_id, "s:code", {})
-        student.on_code(app, ctx, text)
+        student.start_login(app, ctx)

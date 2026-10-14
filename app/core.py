@@ -17,6 +17,8 @@ class Ctx:
     chat_id: int
     user_id: int
     msg_id: int | None = None
+    username: str | None = None      # یوزرنیم بله‌ی فرستنده (اگر داشته باشد)
+    display_name: str = ""
 
 
 class App:

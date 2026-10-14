@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import logging
+import re
 import secrets
 import shutil
 import time
 from pathlib import Path
 
-from . import books, points
+from . import books, points, usernames
 from . import jalali as J
 from . import reports
 from . import rules as R
@@ -315,7 +316,9 @@ def asub_view(app: App, ctx: Ctx, aid: int, sid: int):
         app.send(ctx.chat_id, "پاسخی ثبت نشده است.", [[btn("⬅ بازگشت", f"a:as:{aid}")]])
         return
     st = R.student_status(app.conn, a, sid, app.now())
-    cap = f"{s['full_name']} — {a['title']}\n{reports.cell_text(st)} | {J.fmt_short(sub['submitted_ts'])}"
+    edits = app.conn.execute("SELECT COUNT(*) c FROM submissions WHERE assignment_id=? AND student_id=? AND state='superseded'", (aid, sid)).fetchone()["c"]
+    cap = (f"{s['full_name']} — {a['title']}\n{reports.cell_text(st)} | {J.fmt_short(sub['submitted_ts'])}"
+           + (f" | ویرایش‌شده {fa(edits)} بار" if edits else ""))
     for f in app.conn.execute("SELECT * FROM submission_files WHERE submission_id=? ORDER BY id", (sub["id"],)):
         app.send_file(ctx.chat_id, f["path"], cap)
         cap = None
@@ -456,7 +459,8 @@ def slist(app: App, ctx: Ctx, offset: int):
         nav.append(btn("بعدی ▶", f"a:slist:{offset + step}"))
     if nav:
         rows.append(nav)
-    rows.append([btn("➕ افزودن دانش‌آموز", "a:sadd"), btn("📄 کدهای ورود", "a:codes")])
+    rows.append([btn("➕ افزودن دانش‌آموز", "a:sadd"), btn("🆔 فهرست یوزرنیم‌ها", "a:codes")])
+    rows.append([btn("📝 ثبت گروهی یوزرنیم", "a:uns"), btn("🕓 ورود نشده‌ها", "a:lfail")])
     rows.append([btn("⬅ پنل مدیریت", "a:menu")])
     app.show(ctx, f"👥 دانش‌آموزان ({fa(total)} نفر)\n✔ وارد شده | 🕓 هنوز وارد نشده | ⏸ غیرفعال", rows)
 
@@ -468,6 +472,16 @@ def new_code(app: App) -> str:
             return code
 
 
+def parse_student_line(line: str):
+    """«نام | @یوزرنیم | گروه» ← (نام، یوزرنیم یا None، گروه). قالب قدیمی «نام | گروه» هم کار می‌کند."""
+    parts = [clean(p) for p in line.split("|")]
+    name, rest = parts[0], parts[1:]
+    uname = None
+    if rest and re.fullmatch(r"[\x00-\x7F]+", rest[0].replace(" ", "")) and usernames.normalize(rest[0]):
+        uname, rest = usernames.normalize(rest[0]), rest[1:]
+    return name, uname, (rest[0] if rest else "")
+
+
 def st_sadd(app, ctx, msg, text, data):
     lines = [clean(l) for l in (msg.get("text") or "").split("\n") if clean(l)][:60]
     if not lines:
@@ -476,31 +490,105 @@ def st_sadd(app, ctx, msg, text, data):
     out = []
     grade = 9 if data.get("grade") == 9 else 6
     for line in lines:
-        name, _, grp = line.partition("|")
-        name, grp = clean(name), clean(grp)
+        name, uname, grp = parse_student_line(line)
         if not name:
             continue
-        code = new_code(app)
-        cur = app.conn.execute("INSERT INTO students(full_name,code,created_ts,grade) VALUES(?,?,?,?)", (name, code, app.now(), grade))
+        note = ""
+        if uname and app.conn.execute("SELECT full_name FROM students WHERE username=?", (uname,)).fetchone():
+            note, uname = " ⚠ این یوزرنیم قبلاً برای دانش‌آموز دیگری ثبت شده؛ ثبت نشد", None
+        cur = app.conn.execute("INSERT INTO students(full_name,code,created_ts,grade,username) VALUES(?,?,?,?,?)",
+                               (name, new_code(app), app.now(), grade, uname))
         if grp:
             app.conn.execute("INSERT OR IGNORE INTO groups(name) VALUES(?)", (grp,))
             gid = app.conn.execute("SELECT id FROM groups WHERE name=?", (grp,)).fetchone()["id"]
             app.conn.execute("INSERT OR IGNORE INTO student_groups VALUES(?,?)", (cur.lastrowid, gid))
-        out.append(f"{name} — کد: {fa(code)}" + (f" — گروه: {grp}" if grp else ""))
+        out.append(f"{name} — " + (f"@{uname}" if uname else "بدون یوزرنیم") + (f" — گروه: {grp}" if grp else "") + note)
     app.conn.commit()
     app.audit(ctx.user_id, "students_add", str(len(out)))
     app.clear_state(ctx.chat_id)
-    app.send_long(ctx.chat_id, f"✅ {fa(len(out))} دانش‌آموز اضافه شد. کدها محرمانه‌اند؛ هر کد را فقط به خود همان دانش‌آموز بده:\n\n" + "\n".join(out),
+    app.send_long(ctx.chat_id, f"✅ {fa(len(out))} دانش‌آموز اضافه شد:\n\n" + "\n".join(out) +
+                  "\n\nهر دانش‌آموز بات را استارت کند، اگر یوزرنیمش درست باشد خودکار وارد می‌شود.",
                   [[btn("👥 دانش‌آموزان", "a:slist:0")]])
 
 
 def codes(app: App, ctx: Ctx):
-    rows = app.conn.execute("SELECT * FROM students WHERE active=1 ORDER BY full_name").fetchall()
+    rows = app.conn.execute("SELECT * FROM students WHERE active=1 ORDER BY grade, full_name").fetchall()
     if not rows:
         app.send(ctx.chat_id, "دانش‌آموزی نیست.", HOME)
         return
-    app.send_long(ctx.chat_id, "🔑 کدهای ورود (محرمانه)\n\n" + "\n".join(
-        f"{s['full_name']} ({'نهم' if s['grade'] == 9 else 'ششم'}) — {fa(s['code'])} {'✔' if s['chat_id'] else '🕓'}" for s in rows), [[btn("⬅ بازگشت", "a:slist:0")]])
+    both = app.cfg.login_mode == "both"
+    lines = ["🆔 فهرست یوزرنیم و وضعیت ورود", "✔ وارد شده | 🕓 هنوز وارد نشده", ""]
+    for s in rows:
+        tag = "نهم" if s["grade"] == 9 else "ششم"
+        lines.append(f"{'✔' if s['chat_id'] else '🕓'} {s['full_name']} ({tag}) — " +
+                     (f"@{s['username']}" if s["username"] else "بدون یوزرنیم") + (f" — کد {fa(s['code'])}" if both else ""))
+    app.send_long(ctx.chat_id, "\n".join(lines), [[btn("⬅ بازگشت", "a:slist:0")]])
+
+
+def st_uns(app, ctx, msg, text, data):
+    """ثبت گروهی یوزرنیم برای دانش‌آموزانی که قبلاً ساخته شده‌اند: «نام | @یوزرنیم» در هر خط."""
+    lines = [clean(l) for l in (msg.get("text") or "").split("\n") if clean(l)][:80]
+    ok, bad = [], []
+    for line in lines:
+        name, _, uraw = line.partition("|")
+        name, u = clean(name), usernames.normalize(uraw)
+        if not name or not u:
+            bad.append(f"{line} ← قالب نادرست")
+            continue
+        rows = app.conn.execute("SELECT * FROM students WHERE full_name=? AND active=1", (name,)).fetchall()
+        if len(rows) != 1:
+            bad.append(f"{name} ← " + ("دانش‌آموزی با این نام نیست" if not rows else "چند دانش‌آموز هم‌نام هستند؛ از صفحه‌ی خود دانش‌آموز ثبت کن"))
+            continue
+        other = app.conn.execute("SELECT full_name FROM students WHERE username=? AND id<>?", (u, rows[0]["id"])).fetchone()
+        if other:
+            bad.append(f"{name} ← @{u} برای {other['full_name']} ثبت شده است")
+            continue
+        app.conn.execute("UPDATE students SET username=? WHERE id=?", (u, rows[0]["id"]))
+        ok.append(f"{name} — @{u}")
+    app.conn.commit()
+    app.audit(ctx.user_id, "usernames_bulk", str(len(ok)))
+    app.clear_state(ctx.chat_id)
+    msg_text = f"✅ {fa(len(ok))} یوزرنیم ثبت شد." + ("\n" + "\n".join(ok) if ok else "")
+    if bad:
+        msg_text += f"\n\n⚠ {fa(len(bad))} مورد ثبت نشد:\n" + "\n".join(bad)
+    app.send_long(ctx.chat_id, msg_text, [[btn("👥 دانش‌آموزان", "a:slist:0")]])
+
+
+def st_stun(app, ctx, msg, text, data):
+    sid = data["sid"]
+    back = [[btn("⬅ دانش‌آموز", f"a:st:{sid}")]]
+    if text in ("-", "—"):
+        app.conn.execute("UPDATE students SET username=NULL WHERE id=?", (sid,))
+        app.conn.commit()
+        app.audit(ctx.user_id, "username_clear", str(sid))
+        app.clear_state(ctx.chat_id)
+        app.send(ctx.chat_id, "✅ یوزرنیم پاک شد.", back)
+        return
+    u = usernames.normalize(text)
+    if not u:
+        app.send(ctx.chat_id, "یوزرنیم معتبر نیست (۳ تا ۳۲ حرف انگلیسی، عدد یا _). مثال: @ali_01\nبرای پاک‌کردن «-» بفرست.")
+        return
+    other = app.conn.execute("SELECT full_name FROM students WHERE username=? AND id<>?", (u, sid)).fetchone()
+    if other:
+        app.send(ctx.chat_id, f"این یوزرنیم برای «{other['full_name']}» ثبت شده است.")
+        return
+    app.conn.execute("UPDATE students SET username=? WHERE id=?", (u, sid))
+    app.conn.commit()
+    app.audit(ctx.user_id, "username_set", f"{sid}:{u}")
+    app.clear_state(ctx.chat_id)
+    app.send(ctx.chat_id, f"✅ یوزرنیم ثبت شد: @{u}\nدانش‌آموز بات را استارت کند تا وارد شود.", back)
+
+
+def login_fails(app: App, ctx: Ctx):
+    rows = app.conn.execute("SELECT * FROM login_attempts ORDER BY last_ts DESC LIMIT 15").fetchall()
+    if not rows:
+        app.send(ctx.chat_id, "تلاش ناموفقی برای ورود ثبت نشده است.", [[btn("⬅ دانش‌آموزان", "a:slist:0")]])
+        return
+    lines = ["🕓 کسانی که بات را استارت کردند ولی وارد نشدند", "(اگر یوزرنیم دانش‌آموز را غلط تایپ کرده‌اید، از این‌جا درستش را ببینید)", ""]
+    for r in rows:
+        lines.append(f"• {r['name'] or 'بدون نام'} — " + (f"@{r['username']}" if r["username"] else "بدون یوزرنیم") +
+                     f" — {fa(r['count'])} بار — {J.fmt_short(r['last_ts'])}")
+    app.send_long(ctx.chat_id, "\n".join(lines), [[btn("⬅ دانش‌آموزان", "a:slist:0")]])
 
 
 def sview(app: App, ctx: Ctx, sid: int):
@@ -510,7 +598,7 @@ def sview(app: App, ctx: Ctx, sid: int):
         return
     text = (f"👤 {s['full_name']}\nگروه‌ها: {reports.group_names(app.conn, sid) or '—'}\n"
             f"وضعیت: {'فعال' if s['active'] else 'غیرفعال'} | ورود به بات: {'انجام شده' if s['chat_id'] else 'هنوز نه'}")
-    text += f"\nپایه: {'نهم' if s['grade'] == 9 else 'ششم'}"
+    text += f"\nپایه: {'نهم' if s['grade'] == 9 else 'ششم'}\nیوزرنیم بله: " + (f"@{s['username']}" if s["username"] else "ثبت نشده")
     if s["grade"] == 9:
         top = [[btn("📊 گزارش کامل", f"a:strep:{sid}"), btn("💬 بازخورد", f"a:fbs:{sid}")],
                [btn("📖 گزارش‌های مطالعه", f"a:book:st:{sid}")]]
@@ -521,7 +609,7 @@ def sview(app: App, ctx: Ctx, sid: int):
     rows = top + [
             [btn("📥 همه‌ی پاسخ‌هایش", f"a:stzip:{sid}"), btn("✏ تغییر نام", f"a:stname:{sid}")] if s["grade"] != 9 else
             [btn("✏ تغییر نام", f"a:stname:{sid}")],
-            [btn("🔑 کد جدید (بازنشانی ورود)", f"a:streset:{sid}")],
+            [btn("🆔 یوزرنیم بله", f"a:stun:{sid}"), btn("🔓 بازنشانی ورود", f"a:streset:{sid}")],
             [btn("▶ فعال‌سازی" if not s["active"] else "⏸ غیرفعال‌سازی", f"a:sttog:{sid}")],
             [btn("⬅ فهرست", "a:slist:0")]]
     app.show(ctx, text, rows)
@@ -557,11 +645,16 @@ def st_stname(app, ctx, msg, text, data):
 
 
 def streset(app, ctx, sid):
+    """ورود دانش‌آموز را بازنشانی می‌کند (حساب فعلی جدا می‌شود)؛ دوباره با یوزرنیم‌اش /start می‌زند."""
     code = new_code(app)
     app.conn.execute("UPDATE students SET code=?, chat_id=NULL, joined_ts=NULL WHERE id=?", (code, sid))
     app.conn.commit()
     app.audit(ctx.user_id, "student_reset", str(sid))
-    app.show(ctx, f"🔑 کد جدید {app.student(sid)['full_name']}: {fa(code)}\nحساب قبلی از بات جدا شد.", [[btn("⬅ بازگشت", f"a:st:{sid}")]])
+    s = app.student(sid)
+    extra = f"\n🔑 کد جدید: {fa(code)}" if app.cfg.login_mode == "both" else ""
+    app.show(ctx, f"✅ ورود {s['full_name']} بازنشانی شد؛ حساب قبلی از بات جدا شد.{extra}\n"
+                  f"دانش‌آموز دوباره /start بزند" + (f" (یوزرنیم ثبت‌شده: @{s['username']})." if s["username"] else "؛ یوزرنیمش هنوز ثبت نشده است."),
+             [[btn("⬅ بازگشت", f"a:st:{sid}")]])
 
 
 def sttog(app, ctx, sid):
@@ -840,7 +933,7 @@ STATE_HANDLERS = {
     "a:aextv": st_aextv, "a:aext1v": st_aext1v, "a:aedit": st_aedit, "a:aexc": st_aexc, "a:ars": st_ars,
     "a:sadd": st_sadd, "a:stname": st_stname, "a:gnew": st_gnew, "a:fb": st_fb, "a:bct": st_bct,
     "a:bds": st_bds, "a:admadd": st_admadd,
-    "a:npts": st_npts, "a:padj": points.st_padj, "a:sbde": points.st_sbde,
+    "a:uns": st_uns, "a:stun": st_stun, "a:npts": st_npts, "a:padj": points.st_padj, "a:sbde": points.st_sbde,
     "a:bke": books.st_edit_book, "a:bkp": books.st_edit_pages,
 }
 
@@ -979,10 +1072,20 @@ def on_callback(app: App, ctx: Ctx, parts):
                      [[btn("پایه‌ی ششم", "a:sadd:6"), btn("پایه‌ی نهم", "a:sadd:9")], [btn("⬅ فهرست", "a:slist:0")]])
         else:
             app.set_state(ctx.chat_id, "a:sadd", {"grade": 9 if arg[0] == "9" else 6})
-            app.send(ctx.chat_id, f"نام دانش‌آموزان «پایه‌ی {'نهم' if arg[0] == '9' else 'ششم'}» را بفرست؛ هر نفر در یک خط."
-                                  "\nاگر می‌خواهی هم‌زمان گروهش را بدهی بنویس: «نام | گروه»\n(حداکثر ۶۰ نفر در هر پیام)")
+            app.send(ctx.chat_id, f"دانش‌آموزان «پایه‌ی {'نهم' if arg[0] == '9' else 'ششم'}» را بفرست؛ هر نفر در یک خط:\n"
+                                  "نام | @یوزرنیم بله\n(اختیاری، سوم: | گروه)\nمثال:  علی رضایی | @ali_01\n"
+                                  "اگر یوزرنیم را بعداً می‌دهی فقط نام را بنویس.\n(حداکثر ۶۰ نفر در هر پیام)")
     elif c == "codes":
         codes(app, ctx)
+    elif c == "uns":
+        app.set_state(ctx.chat_id, "a:uns", {})
+        app.send(ctx.chat_id, "برای دانش‌آموزانی که قبلاً ساخته‌ای، یوزرنیم بله را بفرست؛ هر نفر یک خط:\nنام دقیق | @یوزرنیم\nمثال:  علی رضایی | @ali_01")
+    elif c == "stun":
+        app.set_state(ctx.chat_id, "a:stun", {"sid": i(0)})
+        cur = app.student(i(0))["username"]
+        app.send(ctx.chat_id, "یوزرنیم بله‌ی دانش‌آموز را بنویس (مثلاً @ali_01)." + (f"\nفعلی: @{cur}" if cur else "") + "\nبرای پاک‌کردن «-» بفرست.")
+    elif c == "lfail":
+        login_fails(app, ctx)
     elif c == "st":
         sview(app, ctx, i(0))
     elif c == "strep":

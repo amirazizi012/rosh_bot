@@ -254,6 +254,10 @@ def dashboard(conn, cfg, now, logo=False) -> str:
     return layout("داشبورد", body, "/", logo=logo)
 
 
+def _uname(s) -> str:
+    return f' <span class="muted" dir="ltr">@{esc(s["username"])}</span>' if s["username"] else ""
+
+
 def students_page(conn, cfg, now, logo=False) -> str:
     n = cfg.streak_size
     rows = []
@@ -263,11 +267,11 @@ def students_page(conn, cfg, now, logo=False) -> str:
         grade = "نهم" if s["grade"] == 9 else "ششم"
         if s["grade"] == 9:
             r = conn.execute("SELECT COUNT(*) n, COALESCE(SUM(pages),0) p FROM book_reports WHERE student_id=? AND status='active'", (s["id"],)).fetchone()
-            rows.append([link(f"/student/{s['id']}", s["full_name"]), esc(grade), '<span class="muted">—</span>', esc(f"{state} | {joined}"),
+            rows.append([link(f"/student/{s['id']}", s["full_name"]) + _uname(s), esc(grade), '<span class="muted">—</span>', esc(f"{state} | {joined}"),
                          '<span class="muted">—</span>', f'{fa(r["n"])} گزارش | {fa(r["p"])} صفحه', "—"])
             continue
         t = R.student_stats(conn, s["id"], now, n)
-        rows.append([link(f"/student/{s['id']}", s["full_name"]), esc(grade), groups_of(conn, s["id"]), esc(f"{state} | {joined}"),
+        rows.append([link(f"/student/{s['id']}", s["full_name"]) + _uname(s), esc(grade), groups_of(conn, s["id"]), esc(f"{state} | {joined}"),
                      stat_bar(t), f'{fa(t["on_time"])} / {fa(t["late"])} / {fa(t["missed"])} / {fa(t["excused"])}',
                      f'{fa(t["badges"])} نشان | {fa(t["points"])} امتیاز'])
     body = ('<h1>دانش‌آموزان</h1><p class="sub">برای دیدن گزارش کامل هر نفر روی نامش بزن.</p>'

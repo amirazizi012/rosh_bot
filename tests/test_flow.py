@@ -1,5 +1,5 @@
 """آزمون سرتاسری با بله‌ی جعلی: مدیر تکلیف می‌سازد، دانش‌آموز وارد می‌شود و پاسخ می‌فرستد."""
-import os, sys, tempfile
+import os, sys, tempfile, time
 from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from app import db, router, rules as R, scheduler, reports, jalali as J
@@ -27,7 +27,9 @@ class FakeBale:
         raise BaleError("edit unsupported")        # مسیر جایگزین (ارسال پیام تازه) را هم آزمایش می‌کند
 
     def send_photo(self, chat_id, path, caption=None, rows=None):
-        self.files.append((chat_id, str(path))); return {}
+        self.files.append((chat_id, str(path)))
+        self.captions = getattr(self, "captions", []) + [caption]
+        return {}
 
     send_document = send_photo
 
@@ -47,7 +49,7 @@ class FakeBale:
 
 def make_app():
     d = Path(tempfile.mkdtemp())
-    cfg = Config(token="x", admin_ids={ADMIN}, data_dir=d)
+    cfg = Config(token="x", admin_ids={ADMIN}, data_dir=d, login_mode="both")   # این آزمون‌ها ورود با کد را می‌سنجند
     bale = FakeBale()
     app = App(cfg, bale, db.connect(d / "t.db"))
     app.clock = lambda: app._t
@@ -176,6 +178,26 @@ def test_reminder_once():
     assert sum("یادآوری" in t for t in bale.texts(STU)) == 1
     scheduler.daily_backup(app)
     assert list((app.data / "backups").glob("rosh-*.db"))
+
+
+def test_whoami_admin_only():
+    app, bale = make_app()
+    go(app, upd(ADMIN, "/whoami"), upd(STU, "/whoami"))
+    assert any("نمونه‌ی" in t for t in bale.texts(ADMIN))
+    assert not any("نمونه‌ی" in t for t in bale.texts(STU))
+
+
+def test_exports_cleanup():
+    import os
+    app, bale = make_app()
+    app.clock = lambda: time.time()
+    ex = app.data / "exports"
+    old, new = ex / "asg_1", ex / "report_new.xlsx"
+    old.mkdir(); (old / "a.zip").write_bytes(b"x" * 100); new.write_bytes(b"y")
+    two_days_ago = time.time() - 2 * 86400
+    os.utime(old / "a.zip", (two_days_ago, two_days_ago)); os.utime(old, (two_days_ago, two_days_ago))
+    assert scheduler.cleanup_exports(app) == 1
+    assert not old.exists() and new.exists()
 
 
 if __name__ == "__main__":
