@@ -73,7 +73,14 @@ class App:
         """نشان‌های خودکار (و امتیازهای در انتظار تأیید) را برای یک دانش‌آموز بررسی می‌کند."""
         from . import rules as R
         c = self.cfg
-        return R.award_auto(self.conn, sid, self.now(), c.streak_size, c.extra_streak_size, c.extra_streak_points)
+        new = R.award_auto(self.conn, sid, self.now(), c.streak_size, c.extra_streak_size, c.extra_streak_points, c.streak_points)
+        pending = [t for t in new if R.badge_is_pending(self.conn, sid, t)]
+        if pending:  # نشان‌های پشتکار/کوشا منتظر تأیید مدیرند
+            st = self.student(sid)
+            for aid in self.admin_ids():
+                self.send(aid, f"🏅 نشان در انتظار تأیید شماست:\n{st['full_name']} — " + "\n".join(pending),
+                          [[{"text": "⭐ رفتن به صف تأیید", "callback_data": "a:pts:0"}]])
+        return new
 
     def audit(self, admin_id, action, details=""):
         self.conn.execute("INSERT INTO audit(ts,admin_id,action,details) VALUES(?,?,?,?)",

@@ -16,6 +16,14 @@ from .fa import clean, duration, en, fa
 
 log = logging.getLogger("rosh")
 
+def menu_rows(st):
+    """منوی دانش‌آموز؛ پایه‌ی هفتم نشان و امتیاز ندارد."""
+    if st["grade"] in R.GAMIFIED_GRADES:
+        return MENU
+    return [[btn("📚 تکالیف باز", "s:open"), btn("✅ ارسال‌های من", "s:done")],
+            [btn("📈 پیشرفت من", "s:prog"), btn("💬 بازخوردها", "s:fb")]]
+
+
 MENU = [[btn("📚 تکالیف باز", "s:open"), btn("✅ ارسال‌های من", "s:done")],
         [btn("🏅 نشان‌ها و پیشرفت", "s:prog"), btn("💬 بازخوردها", "s:fb")]]
 BACK = [[btn("⬅ منوی اصلی", "s:home")]]
@@ -62,7 +70,7 @@ def try_login(app: App, ctx: Ctx) -> bool:
     app.conn.commit()
     app.clear_state(ctx.chat_id)
     app.send(ctx.chat_id, f"خوش آمدی {st['full_name']} 🎉\nیوزرنیمت تأیید شد و وارد شدی.")
-    notify_admins(app, f"✅ {st['full_name']} ({'نهم' if st['grade'] == 9 else 'ششم'}) با @{u} وارد بات شد.")
+    notify_admins(app, f"✅ {st['full_name']} ({R.GRADE_NAME.get(st['grade'], 'ششم')}) با @{u} وارد بات شد.")
     home(app, ctx, app.student(st["id"]))
     return True
 
@@ -138,7 +146,7 @@ def home(app: App, ctx: Ctx, st):
         from . import books
         books.home(app, ctx, st)
         return
-    app.show(ctx, f"سلام {st['full_name']} 👋\nچه کاری می‌خواهی انجام بدهی؟", MENU)
+    app.show(ctx, f"سلام {st['full_name']} 👋\nچه کاری می‌خواهی انجام بدهی؟", menu_rows(st))
 
 
 # ---------- لیست‌ها ----------
@@ -149,7 +157,7 @@ def list_open(app: App, ctx: Ctx, st):
         req = R.open_resubmit(app.conn, a["id"], st["id"])
         if s["code"] in ("excused", "missed") or (s["sub"] and not req):
             continue
-        icon = "🔁" if req else ("⚠️" if s["code"] == "overdue" else R.KIND_ICON[a["kind"]])
+        icon = "⚠️" if s["code"] == "incomplete" else ("🔁" if req else ("⚠️" if s["code"] == "overdue" else R.KIND_ICON[a["kind"]]))
         dl = R.effective_deadline(app.conn, a, st["id"])
         rows.append([btn(f"{icon} {a['title']} — {J.fmt_short(dl)}"[:60], f"s:a:{a['id']}")])
     if not rows:
@@ -163,7 +171,7 @@ def list_done(app: App, ctx: Ctx, st):
     for a in reversed(R.targets_for_student(app.conn, st["id"])):
         s = R.student_status(app.conn, a, st["id"], now)
         if s["sub"]:
-            mark = "✅" if s["code"] == "on_time" else f"⏰ ({duration(s['over'])} تاخیر)"
+            mark = {"on_time": "✅", "incomplete": "⚠️ (ناقص؛ دوباره بفرست)", "missed": "❌ (ارسال‌نشده)"}.get(s["code"], f"⏰ ({duration(s['over'])} تاخیر)")
             can, _ = R.can_submit(app.conn, a, st["id"], now)
             editable = can and not R.open_resubmit(app.conn, a["id"], st["id"])
             lines.append(f"{mark} {a['title']} — {J.fmt_short(s['sub']['submitted_ts'])}" + (" — ✏ قابل ویرایش" if editable else ""))
@@ -177,10 +185,17 @@ def list_done(app: App, ctx: Ctx, st):
 def progress(app: App, ctx: Ctx, st):
     now, n = app.now(), app.cfg.streak_size
     t = R.student_stats(app.conn, st["id"], now, n)
-    bd = app.conn.execute("SELECT title FROM badges WHERE student_id=? ORDER BY awarded_ts", (st["id"],)).fetchall()
+    if st["grade"] not in R.GAMIFIED_GRADES:     # پایه‌ی هفتم: آمار تکالیف، بدون نشان و امتیاز
+        app.show(ctx, "\n".join([
+            "📈 پیشرفت تو", "",
+            f"تکالیف الزامی: ✅ {fa(t['on_time'])} به‌موقع | ⏰ {fa(t['late'])} با تاخیر | ⚠️ {fa(t['incomplete'])} ناقص | ❌ {fa(t['missed'])} ارسال‌نشده",
+            f"تکالیف اختیاری/امتیازی انجام‌شده: {fa(t['extra_done'])}",
+            "", "به‌موقع فرستادن و کامل فرستادن را ادامه بده 💪"]), BACK)
+        return
+    bd = app.conn.execute("SELECT title FROM badges WHERE student_id=? AND status='approved' ORDER BY awarded_ts", (st["id"],)).fetchall()
     bar = "🟩" * t["current"] + "⬜" * max(0, n - t["current"])
     lines = ["🏅 پیشرفت تو", "",
-             f"تکالیف الزامی: ✅ {fa(t['on_time'])} به‌موقع | ⏰ {fa(t['late'])} با تاخیر | ❌ {fa(t['missed'])} ارسال‌نشده",
+             f"تکالیف الزامی: ✅ {fa(t['on_time'])} به‌موقع | ⏰ {fa(t['late'])} با تاخیر | ⚠️ {fa(t['incomplete'])} ناقص | ❌ {fa(t['missed'])} ارسال‌نشده",
              "", f"مسیر نشان بعدی: {fa(t['current'])} از {fa(n)}", bar,
              f"(هر {fa(n)} تکلیف الزامی پشت‌سرهم و به‌موقع = یک نشان. یک تاخیر یا ارسال‌نشدن، شمارش را از صفر شروع می‌کند.)",
              "", f"⭐ امتیاز تو: {fa(t['points'])}" + (f"  (در انتظار تأیید مدیر: {fa(t['points_pending'])})" if t["points_pending"] else ""),
@@ -216,7 +231,7 @@ def view_assignment(app: App, ctx: Ctx, st, aid: int):
         app.send_file(ctx.chat_id, f["path"])
     closes = f"\n(آخرین زمان ارسال با تاخیر: {J.fmt(dl + a['late_hours'] * 3600)})" if s["code"] == "overdue" else ""
     lines = [f"{R.KIND_ICON[a['kind']]} {a['title']}", f"نوع: {R.KIND_LABEL[a['kind']]}" +
-             (f" | ⭐ {fa(a['points'])} امتیاز (بعد از تأیید مدیر)" if a["kind"] == "bonus" and a["points"] else "")]
+             (f" | ⭐ {fa(a['points'])} امتیاز (بعد از تأیید مدیر)" if a["kind"] == "bonus" and a["points"] and st["grade"] in R.GAMIFIED_GRADES else "")]
     if a["description"]:
         lines += ["", a["description"]]
     lines += ["", f"⏰ مهلت: {J.fmt(dl)}"]
@@ -402,7 +417,7 @@ def on_upload_message(app: App, ctx: Ctx, st, msg, data):
 def finish(app: App, ctx: Ctx, st):
     state, data = app.get_state(ctx.chat_id)
     if state != "s:upload":
-        app.send(ctx.chat_id, "ارسال فعالی نداری. از «تکالیف باز» یک تکلیف را انتخاب کن.", MENU)
+        app.send(ctx.chat_id, "ارسال فعالی نداری. از «تکالیف باز» یک تکلیف را انتخاب کن.", menu_rows(st))
         return
     a = app.assignment(data["aid"])
     n = app.conn.execute("SELECT COUNT(*) c FROM submission_files WHERE submission_id=?", (data["draft"],)).fetchone()["c"]
@@ -417,9 +432,9 @@ def finish(app: App, ctx: Ctx, st):
         app.clear_state(ctx.chat_id)
         _discard_drafts(app, a["id"], st["id"])
         if str(e) == "edit_closed":
-            app.send(ctx.chat_id, "⛔ مهلت ویرایش همین الان تمام شد. تغییرهای این‌بار ثبت نشد و پاسخ قبلی‌ات همان‌طور که بود حفظ شد.", MENU)
+            app.send(ctx.chat_id, "⛔ مهلت ویرایش همین الان تمام شد. تغییرهای این‌بار ثبت نشد و پاسخ قبلی‌ات همان‌طور که بود حفظ شد.", menu_rows(st))
         else:
-            app.send(ctx.chat_id, "⛔ مهلت ارسال این تکلیف همین الان بسته شد. اگر دلیل موجهی داری با مدیر صحبت کن.", MENU)
+            app.send(ctx.chat_id, "⛔ مهلت ارسال این تکلیف همین الان بسته شد. اگر دلیل موجهی داری با مدیر صحبت کن.", menu_rows(st))
         return
     app.clear_state(ctx.chat_id)
     _purge_superseded(app, a["id"], st["id"])
@@ -436,8 +451,9 @@ def finish(app: App, ctx: Ctx, st):
     app.send(ctx.chat_id, f"{head}\n\n📎 تعداد فایل: {fa(n)}\n🕒 زمان ثبت: {J.fmt(now)}")
     new = app.award(st["id"])
     for t in new:
-        app.send(ctx.chat_id, f"🎉 نشان تازه گرفتی!\n{t}")
-    if a["kind"] == "bonus" and a["points"]:
+        if not R.badge_is_pending(app.conn, st["id"], t):   # نشان پشتکار/کوشا بعد از تأیید مدیر اعلام می‌شود
+            app.send(ctx.chat_id, f"🎉 نشان تازه گرفتی!\n{t}")
+    if a["kind"] == "bonus" and a["points"] and st["grade"] in R.GAMIFIED_GRADES:
         app.send(ctx.chat_id, f"⭐ این تکلیف امتیازی است؛ {fa(a['points'])} امتیاز بعد از تأیید مدیر به تو داده می‌شود.")
     home(app, ctx, st)
 
@@ -447,7 +463,7 @@ def cancel(app: App, ctx: Ctx, st):
     if state == "s:upload":
         _discard_drafts(app, data["aid"], st["id"])
     app.clear_state(ctx.chat_id)
-    app.send(ctx.chat_id, "ویرایش لغو شد؛ پاسخ قبلی‌ات دست‌نخورده است." if data.get("edit") else "ارسال لغو شد.", MENU)
+    app.send(ctx.chat_id, "ویرایش لغو شد؛ پاسخ قبلی‌ات دست‌نخورده است." if data.get("edit") else "ارسال لغو شد.", menu_rows(st))
 
 
 # ---------- مسیریابی ----------

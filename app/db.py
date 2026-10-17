@@ -32,7 +32,8 @@ CREATE TABLE IF NOT EXISTS assignments(
   target_all INTEGER NOT NULL DEFAULT 1,
   status TEXT NOT NULL DEFAULT 'active',      -- active | cancelled
   created_ts INTEGER NOT NULL,
-  points INTEGER NOT NULL DEFAULT 0           -- امتیاز تکلیف امتیازی (بعد از تأیید مدیر)
+  points INTEGER NOT NULL DEFAULT 0,          -- امتیاز تکلیف امتیازی (بعد از تأیید مدیر؛ فقط پایه‌ی ششم)
+  target_grade INTEGER NOT NULL DEFAULT 6     -- وقتی target_all=1: ۶، ۷ یا ۰ (هر دو پایه‌ی ششم و هفتم)
 );
 CREATE TABLE IF NOT EXISTS assignment_groups(
   assignment_id INTEGER NOT NULL, group_id INTEGER NOT NULL,
@@ -80,6 +81,7 @@ CREATE TABLE IF NOT EXISTS badges(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   student_id INTEGER NOT NULL, code TEXT NOT NULL, key TEXT NOT NULL,
   title TEXT NOT NULL, awarded_ts INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'approved',                 -- approved | pending (نشان پشتکار/کوشا بعد از تأیید مدیر)
   UNIQUE(student_id, code, key)
 );
 CREATE TABLE IF NOT EXISTS reminders(
@@ -110,6 +112,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS ix_pl_src ON points_ledger(student_id, kind, s
 CREATE TABLE IF NOT EXISTS badge_blocks(
   student_id INTEGER NOT NULL, code TEXT NOT NULL, key TEXT NOT NULL,
   PRIMARY KEY(student_id, code, key)
+);
+CREATE TABLE IF NOT EXISTS status_overrides(
+  assignment_id INTEGER NOT NULL, student_id INTEGER NOT NULL,
+  status TEXT NOT NULL,                                    -- on_time | late | incomplete | missed (ویرایش مدیر)
+  note TEXT, admin_id INTEGER, ts INTEGER NOT NULL,
+  PRIMARY KEY(assignment_id, student_id)
 );
 CREATE TABLE IF NOT EXISTS login_attempts(
   chat_id INTEGER PRIMARY KEY, username TEXT, name TEXT, last_ts INTEGER NOT NULL, count INTEGER NOT NULL DEFAULT 1
@@ -148,6 +156,10 @@ def migrate(conn):
         conn.execute("ALTER TABLE students ADD COLUMN grade INTEGER NOT NULL DEFAULT 6")
     if "points" not in _cols(conn, "assignments"):
         conn.execute("ALTER TABLE assignments ADD COLUMN points INTEGER NOT NULL DEFAULT 0")
+    if "target_grade" not in _cols(conn, "assignments"):
+        conn.execute("ALTER TABLE assignments ADD COLUMN target_grade INTEGER NOT NULL DEFAULT 6")   # تکالیف قبلی همه برای ششم بوده‌اند
+    if "status" not in _cols(conn, "badges"):
+        conn.execute("ALTER TABLE badges ADD COLUMN status TEXT NOT NULL DEFAULT 'approved'")
     if "username" not in _cols(conn, "students"):
         conn.execute("ALTER TABLE students ADD COLUMN username TEXT")
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ix_stu_username ON students(username) "

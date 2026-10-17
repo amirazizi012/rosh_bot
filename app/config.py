@@ -35,6 +35,7 @@ class Config:
     panel_port: int = 8090
     extra_streak_size: int = 5
     extra_streak_points: int = 10
+    streak_points: int = 0               # امتیاز نشان پشتکار (۶ الزامی پشت‌سرهم)؛ صفر = بدون امتیاز
     book_max_pages: int = 300
     book_max_days_back: int = 45
     panel_secure_cookie: bool = False
@@ -72,6 +73,7 @@ def load() -> Config:
         max_file_mb=_int("MAX_FILE_MB", 15),
         extra_streak_size=_int("EXTRA_STREAK_SIZE", 5),
         extra_streak_points=_int("EXTRA_STREAK_POINTS", 10),
+        streak_points=_int("STREAK_POINTS", 0),
         book_max_pages=_int("BOOK_MAX_PAGES", 300),
         book_max_days_back=_int("BOOK_MAX_DAYS_BACK", 45),
         panel_secure_cookie=os.environ.get("PANEL_SECURE_COOKIE", "0") == "1",

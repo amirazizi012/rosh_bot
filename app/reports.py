@@ -17,7 +17,13 @@ def safe_name(s: str) -> str:
 
 
 def cell_text(st: dict) -> str:
+    return _cell_base(st) + (" ✎" if st.get("override") else "")
+
+
+def _cell_base(st: dict) -> str:
     code = st["code"]
+    if code == "incomplete":
+        return "⚠️ ناقص"
     if code == "on_time":
         return "✅ به‌موقع"
     if code == "late":
@@ -37,16 +43,23 @@ def group_names(conn, sid) -> str:
 
 def class_lines(app) -> str:
     now, n = app.now(), app.cfg.streak_size
-    studs = app.conn.execute("SELECT * FROM students WHERE active=1 AND grade=6 ORDER BY full_name").fetchall()
+    studs = app.conn.execute("SELECT * FROM students WHERE active=1 AND grade IN (6,7) ORDER BY grade, full_name").fetchall()
     if not studs:
-        return "هنوز دانش‌آموز پایه‌ی ششمی ثبت نشده است."
-    lines = [f"📊 خلاصه‌ی تکالیف الزامی پایه‌ی ششم ({J.fmt_short(now)})",
-             "✅ به‌موقع | ⏰ با تاخیر | ❌ ارسال‌نشده | 🙏 عذر | 🔥 شمارنده | 🏅 نشان | ⭐ امتیاز (در انتظار)", ""]
+        return "هنوز دانش‌آموز پایه‌ی ششم یا هفتمی ثبت نشده است."
+    lines = [f"📊 خلاصه‌ی تکالیف الزامی ({J.fmt_short(now)})",
+             "✅ به‌موقع | ⏰ با تاخیر | ⚠️ ناقص | ❌ ارسال‌نشده | 🙏 عذر | 🔥 شمارنده | 🏅 نشان | ⭐ امتیاز (در انتظار)"]
+    cur = None
     for s in studs:
+        if s["grade"] != cur:
+            cur = s["grade"]
+            lines += ["", f"— پایه‌ی {R.GRADE_NAME[cur]}" + ("" if cur in R.GAMIFIED_GRADES else " (بدون نشان و امتیاز)") + " —"]
         t = R.student_stats(app.conn, s["id"], now, n)
-        lines.append(f"{s['full_name']}: ✅{fa(t['on_time'])} ⏰{fa(t['late'])} ❌{fa(t['missed'])} "
-                     f"🙏{fa(t['excused'])} | 🔥{fa(t['current'])}/{fa(n)} | 🏅{fa(t['badges'])} | ⭐{fa(t['points'])}"
+        base = (f"{s['full_name']}: ✅{fa(t['on_time'])} ⏰{fa(t['late'])} ⚠️{fa(t['incomplete'])} ❌{fa(t['missed'])} "
+                f"🙏{fa(t['excused'])}")
+        if s["grade"] in R.GAMIFIED_GRADES:
+            base += (f" | 🔥{fa(t['current'])}/{fa(n)} | 🏅{fa(t['badges'])} | ⭐{fa(t['points'])}"
                      + (f" ({fa(t['points_pending'])})" if t["points_pending"] else ""))
+        lines.append(base)
     return "\n".join(lines)
 
 
@@ -55,12 +68,15 @@ def student_report(app, sid) -> str:
     s = app.student(sid)
     if s["grade"] == 9:
         return student_book_report(conn, s)
+    gam = s["grade"] in R.GAMIFIED_GRADES
     t = R.student_stats(conn, sid, now, n)
-    lines = [f"👤 {s['full_name']}", f"گروه‌ها: {group_names(conn, sid) or '—'}", "",
-             f"تکالیف الزامی: ✅ {fa(t['on_time'])} به‌موقع | ⏰ {fa(t['late'])} با تاخیر | "
+    lines = [f"👤 {s['full_name']} — پایه‌ی {R.GRADE_NAME.get(s['grade'], '')}", f"گروه‌ها: {group_names(conn, sid) or '—'}", "",
+             f"تکالیف الزامی: ✅ {fa(t['on_time'])} به‌موقع | ⏰ {fa(t['late'])} با تاخیر | ⚠️ {fa(t['incomplete'])} ناقص | "
              f"❌ {fa(t['missed'])} ارسال‌نشده | 🙏 {fa(t['excused'])} عذر موجه",
-             f"شمارنده‌ی فعلی: {fa(t['current'])} از {fa(n)} | اختیاری/امتیازی انجام‌شده: {fa(t['extra_done'])}",
-             f"⭐ امتیاز تأییدشده: {fa(t['points'])} | در انتظار تأیید: {fa(t['points_pending'])}", ""]
+             (f"شمارنده‌ی فعلی: {fa(t['current'])} از {fa(n)} | " if gam else "") + f"اختیاری/امتیازی انجام‌شده: {fa(t['extra_done'])}"]
+    if gam:
+        lines.append(f"⭐ امتیاز تأییدشده: {fa(t['points'])} | در انتظار تأیید: {fa(t['points_pending'])}")
+    lines.append("")
     lines.append("جزئیات تکالیف:")
     for a in reversed(R.targets_for_student(conn, sid)):
         st = R.student_status(conn, a, sid, now)
@@ -68,8 +84,9 @@ def student_report(app, sid) -> str:
         if st["sub"]:
             extra = f" — ارسال: {J.fmt_short(st['sub']['submitted_ts'])}"
         lines.append(f"{R.KIND_ICON[a['kind']]} {a['title']}: {cell_text(st)}{extra}")
-    bd = conn.execute("SELECT title FROM badges WHERE student_id=? ORDER BY awarded_ts", (sid,)).fetchall()
-    lines += ["", "نشان‌ها:"] + ([f"• {b['title']}" for b in bd] or ["—"])
+    if gam:
+        bd = conn.execute("SELECT title, status FROM badges WHERE student_id=? ORDER BY awarded_ts", (sid,)).fetchall()
+        lines += ["", "نشان‌ها:"] + ([f"• {b['title']}" + (" ⏳ (در انتظار تأیید)" if b["status"] == "pending" else "") for b in bd] or ["—"])
     fb = conn.execute("SELECT COUNT(*) c FROM feedback WHERE student_id=?", (sid,)).fetchone()["c"]
     lines.append(f"\nبازخوردهای ثبت‌شده: {fa(fb)}")
     return "\n".join(lines)
@@ -98,17 +115,19 @@ def build_xlsx(app, path: Path) -> Path:
             width = max(len(str(c.value or "")) for c in col)
             ws.column_dimensions[col[0].column_letter].width = min(max(12, width + 3), 38)
 
-    studs = conn.execute("SELECT * FROM students WHERE active=1 AND grade=6 ORDER BY full_name").fetchall()
+    studs = conn.execute("SELECT * FROM students WHERE active=1 AND grade IN (6,7) ORDER BY grade, full_name").fetchall()
     ws = wb.active
     ws.title = "خلاصه"
-    ws.append(["نام", "گروه‌ها", "الزامی: به‌موقع", "الزامی: با تاخیر", "الزامی: ارسال‌نشده",
+    ws.append(["نام", "پایه", "گروه‌ها", "الزامی: به‌موقع", "الزامی: با تاخیر", "الزامی: ناقص", "الزامی: ارسال‌نشده",
                "عذر موجه", "شمارنده‌ی فعلی", "نشان‌های پشتکار", "تعداد کل نشان‌ها", "اختیاری/امتیازی",
                "امتیاز تأییدشده", "امتیاز در انتظار تأیید"])
     for s in studs:
         t = R.student_stats(conn, s["id"], now, n)
-        ws.append([s["full_name"], group_names(conn, s["id"]), fa(t["on_time"]), fa(t["late"]), fa(t["missed"]),
-                   fa(t["excused"]), f"{fa(t['current'])} از {fa(n)}", fa(t["blocks"]), fa(t["badges"]),
-                   fa(t["extra_done"]), fa(t["points"]), fa(t["points_pending"])])
+        gam = s["grade"] in R.GAMIFIED_GRADES
+        ws.append([s["full_name"], R.GRADE_NAME[s["grade"]], group_names(conn, s["id"]), fa(t["on_time"]), fa(t["late"]), fa(t["incomplete"]),
+                   fa(t["missed"]), fa(t["excused"]), f"{fa(t['current'])} از {fa(n)}" if gam else "—", fa(t["blocks"]) if gam else "—",
+                   fa(t["badges"]) if gam else "—", fa(t["extra_done"]), fa(t["points"]) if gam else "—",
+                   fa(t["points_pending"]) if gam else "—"])
     style(ws)
 
     asgs = conn.execute("SELECT * FROM assignments WHERE status='active' ORDER BY deadline_ts, id").fetchall()

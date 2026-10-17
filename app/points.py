@@ -21,21 +21,43 @@ def tell(app: App, sid, text, rows=None):
 
 
 # ---------- صف تأیید ----------
+def pending_count(conn) -> int:
+    """تعداد موردهای منتظر تأیید: نشان‌های پشتکار/کوشا + امتیاز تکلیف‌های امتیازی."""
+    b = conn.execute("SELECT COUNT(*) c FROM badges WHERE status='pending'").fetchone()["c"]
+    p = conn.execute("SELECT COUNT(*) c FROM points_ledger WHERE status='pending' AND kind<>'badge'").fetchone()["c"]
+    return b + p
+
+
+def _pending_items(app: App):
+    items = []
+    for b in app.conn.execute("SELECT b.*, s.full_name FROM badges b JOIN students s ON s.id=b.student_id WHERE b.status='pending'"):
+        pts = app.conn.execute("SELECT delta FROM points_ledger WHERE student_id=? AND kind='badge' AND source_code=? AND source_key=? "
+                               "AND status='pending'", (b["student_id"], b["code"], b["key"])).fetchone()
+        items.append((b["awarded_ts"], "badge", b, pts["delta"] if pts else 0))
+    for r in app.conn.execute("SELECT l.*, s.full_name FROM points_ledger l JOIN students s ON s.id=l.student_id "
+                              "WHERE l.status='pending' AND l.kind<>'badge'"):
+        items.append((r["created_ts"], "points", r, r["delta"]))
+    return sorted(items, key=lambda x: x[0])
+
+
 def pending_view(app: App, ctx: Ctx, offset: int = 0):
-    total = app.conn.execute("SELECT COUNT(*) c FROM points_ledger WHERE status='pending'").fetchone()["c"]
-    rows_db = app.conn.execute("SELECT l.*, s.full_name FROM points_ledger l JOIN students s ON s.id=l.student_id "
-                               "WHERE l.status='pending' ORDER BY l.id LIMIT ? OFFSET ?", (PER, offset)).fetchall()
-    if not rows_db:
-        app.show(ctx, "✅ امتیاز در انتظار تأییدی نیست.", BACK)
+    items = _pending_items(app)
+    if not items:
+        app.show(ctx, "✅ نشان یا امتیازی در انتظار تأیید نیست.", BACK)
         return
-    lines = [f"⭐ امتیازهای در انتظار تأیید ({fa(total)} مورد)", ""]
+    lines = [f"⭐ در انتظار تأیید شما ({fa(len(items))} مورد)", ""]
     rows = []
-    for r in rows_db:
-        lines.append(f"{fa(r['id'])}) {r['full_name']} — {r['reason']} — +{fa(r['delta'])}")
-        rows.append([btn(f"✅ تأیید {fa(r['id'])}", f"a:pok:{r['id']}"), btn(f"❌ رد {fa(r['id'])}", f"a:pno:{r['id']}")])
-    rows.append([btn(f"✅ تأیید همه‌ی {fa(total)} مورد", "a:pall")])
-    if total > offset + PER:
+    for n, (_, kind, r, delta) in enumerate(items[offset:offset + PER], 1):
+        if kind == "badge":
+            lines.append(f"{fa(n)}) 🏅 {r['full_name']} — {r['title']}" + (f" (+{fa(delta)} امتیاز)" if delta else ""))
+            rows.append([btn(f"✅ تأیید {fa(n)}", f"a:bok:{r['id']}"), btn(f"❌ رد {fa(n)}", f"a:bno:{r['id']}")])
+        else:
+            lines.append(f"{fa(n)}) ⭐ {r['full_name']} — {r['reason']} — +{fa(delta)}")
+            rows.append([btn(f"✅ تأیید {fa(n)}", f"a:pok:{r['id']}"), btn(f"❌ رد {fa(n)}", f"a:pno:{r['id']}")])
+    rows.append([btn(f"✅ تأیید همه‌ی {fa(len(items))} مورد", "a:pall")])
+    if len(items) > offset + PER:
         rows.append([btn("بعدی ▶", f"a:pts:{offset + PER}")])
+    rows.append([btn("💡 اگر یکی از تکالیف ایراد دارد، از «بررسی تکالیف» وضعیتش را ناقص کنید", "a:slist:0")])
     rows += BACK
     app.show(ctx, "\n".join(lines), rows)
 
@@ -63,15 +85,51 @@ def reject(app, ctx, pid, offset=0):
     pending_view(app, ctx, offset)
 
 
+def approve_badge(app: App, ctx: Ctx, bid: int, offset: int = 0, quiet: bool = False):
+    b = app.conn.execute("SELECT * FROM badges WHERE id=? AND status='pending'", (bid,)).fetchone()
+    if not b:
+        return False
+    app.conn.execute("UPDATE badges SET status='approved', awarded_ts=? WHERE id=?", (app.now(), bid))
+    led = app.conn.execute("SELECT * FROM points_ledger WHERE student_id=? AND kind='badge' AND source_code=? AND source_key=? "
+                           "AND status='pending'", (b["student_id"], b["code"], b["key"])).fetchone()
+    pts = 0
+    if led:
+        app.conn.execute("UPDATE points_ledger SET status='approved', decided_ts=?, admin_id=? WHERE id=?", (app.now(), ctx.user_id, led["id"]))
+        pts = led["delta"]
+    app.conn.commit()
+    app.audit(ctx.user_id, "badge_approve", f"{b['student_id']}:{b['code']}:{b['key']}")
+    tell(app, b["student_id"], f"🎉 نشان تازه گرفتی!\n{b['title']}" + (f"\n⭐ {fa(pts)} امتیاز هم به تو اضافه شد." if pts else ""))
+    if not quiet:
+        pending_view(app, ctx, offset)
+    return True
+
+
+def reject_badge(app: App, ctx: Ctx, bid: int):
+    """رد نشان در انتظار: نشان حذف و مسدود می‌شود (دوباره خودکار داده نمی‌شود) و امتیازش رد می‌شود."""
+    b = app.conn.execute("SELECT * FROM badges WHERE id=? AND status='pending'", (bid,)).fetchone()
+    if b:
+        badge_delete(app, ctx, bid, True, quiet=True)
+    pending_view(app, ctx, 0)
+
+
 def approve_all(app, ctx):
-    ids = [r["id"] for r in app.conn.execute("SELECT id FROM points_ledger WHERE status='pending' ORDER BY id")]
-    n = sum(1 for i in ids if _decide(app, ctx, i, "approved"))
+    n = 0
+    for b in app.conn.execute("SELECT id FROM badges WHERE status='pending' ORDER BY id").fetchall():
+        n += 1 if approve_badge(app, ctx, b["id"], quiet=True) else 0
+    for r in app.conn.execute("SELECT id FROM points_ledger WHERE status='pending' AND kind<>'badge' ORDER BY id").fetchall():
+        n += 1 if _decide(app, ctx, r["id"], "approved") else 0
     app.show(ctx, f"✅ {fa(n)} مورد تأیید شد.", BACK)
 
 
 # ---------- امتیاز یک نفر ----------
+NO_GAMIFY = "برای این پایه نشان و امتیاز فعال نیست (فقط پایه‌ی ششم)."
+
+
 def student_points(app: App, ctx: Ctx, sid: int):
     s = app.student(sid)
+    if not R.gamified(app.conn, sid):
+        app.show(ctx, NO_GAMIFY, [[btn("⬅ دانش‌آموز", f"a:st:{sid}")]])
+        return
     tot, pend = R.points_total(app.conn, sid)
     rows_db = app.conn.execute("SELECT * FROM points_ledger WHERE student_id=? ORDER BY id DESC LIMIT 12", (sid,)).fetchall()
     mark = {"approved": "✅", "pending": "⏳", "rejected": "❌"}
@@ -103,17 +161,20 @@ def st_padj(app, ctx, msg, text, data):
 # ---------- مدیریت نشان‌ها ----------
 def badges_view(app: App, ctx: Ctx, sid: int):
     s = app.student(sid)
+    if not R.gamified(app.conn, sid):
+        app.show(ctx, NO_GAMIFY, [[btn("⬅ دانش‌آموز", f"a:st:{sid}")]])
+        return
     bs = app.conn.execute("SELECT * FROM badges WHERE student_id=? ORDER BY awarded_ts", (sid,)).fetchall()
     rows = []
     for b in bs:
-        rows.append([btn(f"✏ {b['title']}"[:34], f"a:sbde:{b['id']}"), btn("🗑", f"a:sbdd:{b['id']}")])
+        rows.append([btn(f"{'⏳' if b['status'] == 'pending' else '✏'} {b['title']}"[:34], f"a:sbde:{b['id']}"), btn("🗑", f"a:sbdd:{b['id']}")])
     rows.append([btn("➕ نشان دستی جدید", f"a:bds:{sid}")])
     rows.append([btn("⬅ دانش‌آموز", f"a:st:{sid}")])
-    app.show(ctx, f"🏅 نشان‌های {s['full_name']} ({fa(len(bs))} نشان)\n✏ ویرایش عنوان | 🗑 حذف" +
+    app.show(ctx, f"🏅 نشان‌های {s['full_name']} ({fa(len(bs))} نشان)\n✏ ویرایش عنوان | 🗑 حذف | ⏳ در انتظار تأیید" +
              ("" if bs else "\n\nنشانی ندارد."), rows)
 
 
-def badge_delete(app: App, ctx: Ctx, bid: int, confirm: bool):
+def badge_delete(app: App, ctx: Ctx, bid: int, confirm: bool, quiet: bool = False):
     b = app.conn.execute("SELECT * FROM badges WHERE id=?", (bid,)).fetchone()
     if not b:
         app.show(ctx, "نشان پیدا نشد.", BACK)
@@ -131,7 +192,8 @@ def badge_delete(app: App, ctx: Ctx, bid: int, confirm: bool):
                      (app.now(), ctx.user_id, sid, b["code"], b["key"]))
     app.conn.commit()
     app.audit(ctx.user_id, "badge_delete", f"{sid}:{b['code']}:{b['key']}")
-    badges_view(app, ctx, sid)
+    if not quiet:
+        badges_view(app, ctx, sid)
 
 
 def st_sbde(app, ctx, msg, text, data):

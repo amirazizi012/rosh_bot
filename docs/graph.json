@@ -1,10 +1,10 @@
 {
-  "generated_at": "2026-10-13T23:21:12+00:00",
+  "generated_at": "2026-10-17T07:04:15+00:00",
   "generator": "scripts/map.py",
   "modules": [
     {
       "file": "app/admin.py",
-      "lines": 1192,
+      "lines": 1213,
       "functions": [
         "menu",
         "student_buttons",
@@ -88,6 +88,7 @@
         "jalali",
         "points",
         "reports",
+        "review",
         "rules",
         "student",
         "usernames"
@@ -153,7 +154,7 @@
     },
     {
       "file": "app/config.py",
-      "lines": 82,
+      "lines": 84,
       "functions": [
         "load_env",
         "_int",
@@ -167,7 +168,7 @@
     },
     {
       "file": "app/core.py",
-      "lines": 152,
+      "lines": 159,
       "functions": [
         "_admin_ids",
         "_get_setting",
@@ -184,7 +185,7 @@
     },
     {
       "file": "app/db.py",
-      "lines": 155,
+      "lines": 167,
       "functions": [
         "connect",
         "_cols",
@@ -273,7 +274,7 @@
     },
     {
       "file": "app/panel_ui.py",
-      "lines": 487,
+      "lines": 507,
       "functions": [
         "esc",
         "has_logo",
@@ -316,13 +317,17 @@
     },
     {
       "file": "app/points.py",
-      "lines": 147,
+      "lines": 209,
       "functions": [
         "tell",
+        "pending_count",
+        "_pending_items",
         "pending_view",
         "_decide",
         "approve",
         "reject",
+        "approve_badge",
+        "reject_badge",
         "approve_all",
         "student_points",
         "st_padj",
@@ -342,10 +347,11 @@
     },
     {
       "file": "app/reports.py",
-      "lines": 302,
+      "lines": 321,
       "functions": [
         "safe_name",
         "cell_text",
+        "_cell_base",
         "group_names",
         "class_lines",
         "student_report",
@@ -365,6 +371,32 @@
       "imports_internal": [
         "fa",
         "jalali",
+        "rules"
+      ],
+      "entry_point": false
+    },
+    {
+      "file": "app/review.py",
+      "lines": 167,
+      "functions": [
+        "_tell",
+        "_status_text",
+        "student_list",
+        "pick_student",
+        "view",
+        "apply",
+        "_sync_bonus_points",
+        "_notify_student",
+        "st_note",
+        "callback"
+      ],
+      "classes": [],
+      "imports_internal": [
+        "bale",
+        "core",
+        "fa",
+        "jalali",
+        "reports",
         "rules"
       ],
       "entry_point": false
@@ -392,8 +424,9 @@
     },
     {
       "file": "app/rules.py",
-      "lines": 279,
+      "lines": 346,
       "functions": [
+        "gamified",
         "is_target",
         "_closed_before_join",
         "targets_for_student",
@@ -403,6 +436,7 @@
         "current_final",
         "open_resubmit",
         "is_excused",
+        "get_override",
         "student_status",
         "can_submit",
         "finalize",
@@ -412,6 +446,8 @@
         "points_total",
         "student_stats",
         "give_badge",
+        "badge_is_pending",
+        "_withdraw_pending",
         "award_auto",
         "describe_for_student"
       ],
@@ -441,8 +477,9 @@
     },
     {
       "file": "app/student.py",
-      "lines": 491,
+      "lines": 507,
       "functions": [
+        "menu_rows",
         "notify_admins",
         "learn_username",
         "try_login",
@@ -550,7 +587,8 @@
         "target_all",
         "status",
         "created_ts",
-        "points"
+        "points",
+        "target_grade"
       ]
     },
     {
@@ -642,6 +680,7 @@
         "key",
         "title",
         "awarded_ts",
+        "status",
         "UNIQUE(student_id"
       ]
     },
@@ -703,6 +742,17 @@
       ]
     },
     {
+      "table": "status_overrides",
+      "columns": [
+        "assignment_id",
+        "student_id",
+        "status",
+        "note",
+        "admin_id",
+        "ts"
+      ]
+    },
+    {
       "table": "login_attempts",
       "columns": [
         "chat_id",
@@ -758,8 +808,10 @@
   "tests": [
     "tests/test_books.py",
     "tests/test_flow.py",
+    "tests/test_grade7.py",
     "tests/test_login_edit.py",
     "tests/test_panel.py",
+    "tests/test_review.py",
     "tests/test_rules.py"
   ]
 }
