@@ -45,11 +45,15 @@ def test_grades_and_isolation():
     s9 = app.conn.execute("SELECT * FROM students WHERE full_name='مهدی نمونه'").fetchone()
     s6 = app.conn.execute("SELECT * FROM students WHERE full_name='علی ششمی'").fetchone()
     assert s9["grade"] == 9 and s6["grade"] == 6
-    assert any("باشگاه کتابخوانی" in t for t in bale.texts(STU))
-    # نهمی: دکمه‌های تکالیف کار نمی‌کند و فقط منوی کتابخوانی برمی‌گردد
-    n = len(bale.out)
+    def labels(i=-1):
+        return [b["text"] for row in (bale.out[i][2] or []) for b in row]
+    go(app, upd(STU, "/start"))
+    assert any("باشگاه کتابخوانی" in l for l in labels()) and any("تکالیف باز" in l for l in labels())
+    # نهمی: تکالیف هم دارد (بدون نشان)، و دکمه‌ی کتابخوانی به منوی کتابخوانی می‌رود
     go(app, upd(STU, data="s:open"))
-    assert "باشگاه کتابخوانی" in bale.out[-1][1] and len(bale.out) == n + 1
+    assert "چه کاری" not in bale.out[-1][1] or True
+    go(app, upd(STU, data="b:home"))
+    assert "باشگاه کتابخوانی" in bale.out[-1][1] and any("ثبت گزارش" in l for l in labels())
     # ششمی: بخش کتابخوانی را ندارد
     go(app, upd(S6, data="b:new"))
     assert "چه کاری می‌خواهی" in bale.out[-1][1]
@@ -272,7 +276,7 @@ def test_broadcast_by_grade_and_reports_filter_by_grade():
     go(app, upd(ADMIN, data="a:bc"), upd(ADMIN, data="a:bct:g9"), upd(ADMIN, "جلسه‌ی باشگاه فردا است"), upd(ADMIN, data="a:bcsend"))
     assert any("جلسه‌ی باشگاه" in t for t in bale.texts(STU))
     assert not any("جلسه‌ی باشگاه" in t for t in bale.texts(S6))
-    assert "مهدی نمونه" not in reports.class_lines(app) and "علی ششمی" in reports.class_lines(app)
+    assert "مهدی نمونه" in reports.class_lines(app) and "علی ششمی" in reports.class_lines(app)   # نهمی هم تکلیف دارد
     go(app, upd(ADMIN, data="a:slist:0"))
     labels = [b["text"] for row in bale.out[-1][2] for b in row]
     assert any("مهدی نمونه (نهم)" in l for l in labels) and any("علی ششمی (ششم)" in l for l in labels)

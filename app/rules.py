@@ -8,12 +8,15 @@ from math import ceil
 
 from .fa import fa, duration
 
-KIND_LABEL = {"required": "الزامی", "optional": "اختیاری", "bonus": "امتیازی"}
+KIND_LABEL = {"required": "الزامی", "optional": "تمرین بیشتر", "bonus": "امتیازی"}
 
-# پایه‌ها: ششم و هفتم تکلیف دارند؛ نشان و امتیاز فقط برای ششم؛ نهم فقط باشگاه کتابخوانی
-HOMEWORK_GRADES = (6, 7)
+# پایه‌ها: ششم، هفتم و نهم تکلیف دارند؛ نشان و امتیاز فقط برای ششم؛ نهم علاوه بر تکلیف باشگاه کتابخوانی هم دارد
+HOMEWORK_GRADES = (6, 7, 9)
 GAMIFIED_GRADES = (6,)
 GRADE_NAME = {6: "ششم", 7: "هفتم", 9: "نهم"}
+# مخاطب تکلیف (assignments.target_grade): ۶/۷/۹ یک پایه، ۰ = ششم و هفتم (تکالیف قدیمی)، ۹۹ = همه‌ی پایه‌های تکلیف
+TARGET_ALL = 99
+TARGET_NAME = {0: "ششم و هفتم", 6: "همه‌ی پایه‌ی ششم", 7: "همه‌ی پایه‌ی هفتم", 9: "همه‌ی پایه‌ی نهم", 99: "همه‌ی پایه‌ها (ششم، هفتم، نهم)"}
 
 
 def gamified(conn, sid) -> bool:
@@ -39,7 +42,8 @@ def is_target(conn, a, sid, grade=None) -> bool:
         if grade is None:
             r = conn.execute("SELECT grade FROM students WHERE id=?", (sid,)).fetchone()
             grade = r["grade"] if r else 6
-        return a["target_grade"] in (0, grade)
+        tg = a["target_grade"]
+        return tg == TARGET_ALL or tg == grade or (tg == 0 and grade in (6, 7))
     return conn.execute(
         "SELECT 1 FROM assignment_groups ag JOIN student_groups sg ON sg.group_id=ag.group_id "
         "WHERE ag.assignment_id=? AND sg.student_id=? LIMIT 1", (a["id"], sid)).fetchone() is not None
@@ -291,7 +295,7 @@ def award_auto(conn, sid, now, n, xn=5, xp=10, sp=0) -> list:
     xblocks, _ = extra_streak_state(conn, sid, now, xn)
     _withdraw_pending(conn, sid, "xstreak", xblocks)
     for i in range(1, xblocks + 1):
-        t = f"🌟 نشان کوشا {fa(i)} — {fa(xn)} تکلیف اختیاری/امتیازی پشت‌سرهم و به‌موقع"
+        t = f"🌟 نشان کوشا {fa(i)} — {fa(xn)} تمرین بیشتر/امتیازی پشت‌سرهم و به‌موقع"
         if give_badge(conn, sid, "xstreak", i, t, now, "pending"):
             new.append(t)
             add_points(conn, sid, xp, t, "badge", "xstreak", i, now, "pending")  # با تأیید همان نشان حساب می‌شود

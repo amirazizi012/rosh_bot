@@ -74,7 +74,7 @@ def test_assignment_targeting_by_grade():
     # مسیر مدیر: ساخت تکلیف فقط برای هفتم
     go(app, upd(ADMIN, data="a:new"), upd(ADMIN, "هندسه"), upd(ADMIN, "حل کنید"), upd(ADMIN, data="a:nb"), upd(ADMIN, data="a:nk:required"))
     labels = [b["text"] for row in bale.out[-1][2] for b in row]
-    assert any("هر دو پایه (ششم و هفتم)" in l for l in labels) and "فقط ششم" in labels and "فقط هفتم" in labels
+    assert any("همه‌ی پایه‌ها" in l for l in labels) and "فقط ششم" in labels and "فقط هفتم" in labels and "فقط نهم" in labels
     go(app, upd(ADMIN, data="a:nt:g7"), upd(ADMIN, "فردا ۲۱:۳۰"))
     assert "همه‌ی پایه‌ی هفتم" in bale.texts(ADMIN)[-1]
     go(app, upd(ADMIN, data="a:npub:1"))
@@ -84,13 +84,13 @@ def test_assignment_targeting_by_grade():
     # دانش‌آموز پایه‌ی دیگر با شناسه‌ی دستی هم نمی‌تواند آن را باز کند
     go(app, upd(S6, data=f"s:a:{a['id']}"))
     assert "پیدا نشد" in bale.texts(S6)[-1]
-    # گزینه‌ی «هر دو پایه» (سازگار با قبل)
+    # گزینه‌ی «همه‌ی پایه‌ها» (ششم، هفتم، نهم)
     go(app, upd(ADMIN, data="a:new"), upd(ADMIN, "مشترک"), upd(ADMIN, "x"), upd(ADMIN, data="a:nb"), upd(ADMIN, data="a:nk:required"),
        upd(ADMIN, data="a:nt:all"), upd(ADMIN, "فردا ۲۱:۳۰"), upd(ADMIN, data="a:npub:0"))
     a2 = app.conn.execute("SELECT * FROM assignments ORDER BY id DESC").fetchone()
-    assert (a2["target_all"], a2["target_grade"]) == (1, 0) and ids(a2) == [s6, s7]
+    assert (a2["target_all"], a2["target_grade"]) == (1, 99) and ids(a2) == [s6, s7, sid(app, "نیما نهمی")]
     go(app, upd(ADMIN, data=f"a:as:{a2['id']}"))
-    assert "هر دو پایه (ششم و هفتم)" in bale.texts(ADMIN)[-1]
+    assert "همه‌ی پایه‌ها (ششم، هفتم، نهم)" in bale.texts(ADMIN)[-1]
 
 
 def test_grade7_has_all_homework_features():
@@ -199,7 +199,7 @@ def test_reports_and_panel_for_grade7():
     submit_db(app, a, s6, a["deadline_ts"] - H)
     submit_db(app, a, s7, a["deadline_ts"] + 3 * H)
     txt = reports.class_lines(app)
-    assert "پایه‌ی هفتم (بدون نشان و امتیاز)" in txt and "رضا هفتمی" in txt and "نیما نهمی" not in txt
+    assert "پایه‌ی هفتم (بدون نشان و امتیاز)" in txt and "رضا هفتمی" in txt and "پایه‌ی نهم (بدون نشان و امتیاز)" in txt
     line7 = next(l for l in txt.splitlines() if l.startswith("رضا هفتمی"))
     assert "⭐" not in line7 and "🏅" not in line7
     rep7 = reports.student_report(app, s7)

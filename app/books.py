@@ -19,7 +19,7 @@ from .fa import clean, en, fa
 
 log = logging.getLogger("rosh")
 DAY = 86400
-BOOK_MENU = [[btn("📖 ثبت گزارش مطالعه", "b:new")], [btn("🗂 گزارش‌های من", "b:mine")]]
+BOOK_MENU = [[btn("📖 ثبت گزارش مطالعه", "b:new")], [btn("🗂 گزارش‌های من", "b:mine")], [btn("⬅ منوی اصلی", "s:home")]]
 BACK = [[btn("⬅ منوی اصلی", "s:home")]]
 
 
@@ -137,7 +137,10 @@ def _preview(app, ctx, st, data):
 def on_callback(app: App, ctx: Ctx, st, parts):
     c = parts[1] if len(parts) > 1 else ""
     state, data = app.get_state(ctx.chat_id)
-    if c == "new":
+    if c == "home":
+        app.clear_state(ctx.chat_id)
+        home(app, ctx, st)
+    elif c == "new":
         start(app, ctx, st)
     elif c == "d":
         i = int(parts[2])

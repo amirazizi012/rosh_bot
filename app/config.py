@@ -25,7 +25,7 @@ class Config:
     data_dir: Path
     api_base: str = "https://tapi.bale.ai"
     grace_minutes: int = 20
-    late_window_hours: int = 24
+    late_window_hours: int = 96
     streak_size: int = 6
     reminder_hours: int = 3
     max_file_mb: int = 15
@@ -64,7 +64,7 @@ def load() -> Config:
         data_dir=Path(os.environ.get("DATA_DIR", "./data")),
         api_base=os.environ.get("BALE_API_BASE", "https://tapi.bale.ai"),
         grace_minutes=_int("GRACE_MINUTES", 20),
-        late_window_hours=_int("LATE_WINDOW_HOURS", 24),
+        late_window_hours=_int("LATE_WINDOW_HOURS", 96),
         streak_size=_int("STREAK_SIZE", 6),
         reminder_hours=_int("REMINDER_HOURS", 3),
         panel_url=os.environ.get("PANEL_URL", "").strip().rstrip("/"),

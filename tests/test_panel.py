@@ -154,7 +154,7 @@ def test_panel_books_and_points_pages():
         text = cl.req("GET", "/students")[2].decode()
         assert "نهم" in text and "ششم" in text
         text = cl.req("GET", "/")[2].decode()
-        assert "رضا کتابخوان" not in text                    # داشبورد فقط پایه‌ی ششم
+        assert "رضا کتابخوان" in text                        # نهمی هم تکلیف دارد و در داشبورد می‌آید
         st, r, body = cl.req("GET", "/books.xlsx?days=30")
         assert st == 200 and body[:2] == b"PK" and "xlsx" in r.getheader("Content-Disposition")
     finally:

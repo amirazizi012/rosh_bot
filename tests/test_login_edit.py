@@ -83,7 +83,7 @@ def test_inactive_and_grade9_login():
     app, bale = mk()
     go(app, upd(ADMIN, data="a:sadd"), upd(ADMIN, data="a:sadd:9"), upd(ADMIN, "حسین نهمی | @Hos_9"))
     go(app, uupd(4100, "/start", "hos_9"))
-    assert "باشگاه کتابخوانی" in bale.texts(4100)[-1]
+    assert any("باشگاه کتابخوانی" in b["text"] for row in bale.out[-1][2] for b in row)   # نهمی: تکلیف + کتابخوانی
     ali = sid(app, "علی رضایی")
     go(app, upd(ADMIN, data=f"a:sttog:{ali}"), uupd(4101, "/start", "ali_01"))
     assert app.student_by_chat(4101) is None

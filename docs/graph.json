@@ -1,10 +1,10 @@
 {
-  "generated_at": "2026-10-17T07:04:15+00:00",
+  "generated_at": "2026-10-31T16:09:10+00:00",
   "generator": "scripts/map.py",
   "modules": [
     {
       "file": "app/admin.py",
-      "lines": 1213,
+      "lines": 1214,
       "functions": [
         "menu",
         "student_buttons",
@@ -111,7 +111,7 @@
     },
     {
       "file": "app/books.py",
-      "lines": 411,
+      "lines": 414,
       "functions": [
         "md_safe",
         "pair_label",
@@ -274,7 +274,7 @@
     },
     {
       "file": "app/panel_ui.py",
-      "lines": 507,
+      "lines": 506,
       "functions": [
         "esc",
         "has_logo",
@@ -302,6 +302,7 @@
         "audit_page",
         "not_found",
         "_pair",
+        "_book_section",
         "student_book_page",
         "books_page",
         "points_page"
@@ -403,7 +404,7 @@
     },
     {
       "file": "app/router.py",
-      "lines": 130,
+      "lines": 125,
       "functions": [
         "handle",
         "_display",
@@ -424,7 +425,7 @@
     },
     {
       "file": "app/rules.py",
-      "lines": 346,
+      "lines": 350,
       "functions": [
         "gamified",
         "is_target",
@@ -477,7 +478,7 @@
     },
     {
       "file": "app/student.py",
-      "lines": 507,
+      "lines": 506,
       "functions": [
         "menu_rows",
         "notify_admins",
@@ -809,6 +810,7 @@
     "tests/test_books.py",
     "tests/test_flow.py",
     "tests/test_grade7.py",
+    "tests/test_grade9.py",
     "tests/test_login_edit.py",
     "tests/test_panel.py",
     "tests/test_review.py",

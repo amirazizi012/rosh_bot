@@ -43,9 +43,9 @@ def group_names(conn, sid) -> str:
 
 def class_lines(app) -> str:
     now, n = app.now(), app.cfg.streak_size
-    studs = app.conn.execute("SELECT * FROM students WHERE active=1 AND grade IN (6,7) ORDER BY grade, full_name").fetchall()
+    studs = app.conn.execute("SELECT * FROM students WHERE active=1 AND grade IN (6,7,9) ORDER BY grade, full_name").fetchall()
     if not studs:
-        return "هنوز دانش‌آموز پایه‌ی ششم یا هفتمی ثبت نشده است."
+        return "هنوز دانش‌آموزی (ششم، هفتم یا نهم) برای تکالیف ثبت نشده است."
     lines = [f"📊 خلاصه‌ی تکالیف الزامی ({J.fmt_short(now)})",
              "✅ به‌موقع | ⏰ با تاخیر | ⚠️ ناقص | ❌ ارسال‌نشده | 🙏 عذر | 🔥 شمارنده | 🏅 نشان | ⭐ امتیاز (در انتظار)"]
     cur = None
@@ -66,14 +66,12 @@ def class_lines(app) -> str:
 def student_report(app, sid) -> str:
     conn, now, n = app.conn, app.now(), app.cfg.streak_size
     s = app.student(sid)
-    if s["grade"] == 9:
-        return student_book_report(conn, s)
     gam = s["grade"] in R.GAMIFIED_GRADES
     t = R.student_stats(conn, sid, now, n)
     lines = [f"👤 {s['full_name']} — پایه‌ی {R.GRADE_NAME.get(s['grade'], '')}", f"گروه‌ها: {group_names(conn, sid) or '—'}", "",
              f"تکالیف الزامی: ✅ {fa(t['on_time'])} به‌موقع | ⏰ {fa(t['late'])} با تاخیر | ⚠️ {fa(t['incomplete'])} ناقص | "
              f"❌ {fa(t['missed'])} ارسال‌نشده | 🙏 {fa(t['excused'])} عذر موجه",
-             (f"شمارنده‌ی فعلی: {fa(t['current'])} از {fa(n)} | " if gam else "") + f"اختیاری/امتیازی انجام‌شده: {fa(t['extra_done'])}"]
+             (f"شمارنده‌ی فعلی: {fa(t['current'])} از {fa(n)} | " if gam else "") + f"تمرین بیشتر/امتیازی انجام‌شده: {fa(t['extra_done'])}"]
     if gam:
         lines.append(f"⭐ امتیاز تأییدشده: {fa(t['points'])} | در انتظار تأیید: {fa(t['points_pending'])}")
     lines.append("")
@@ -89,6 +87,8 @@ def student_report(app, sid) -> str:
         lines += ["", "نشان‌ها:"] + ([f"• {b['title']}" + (" ⏳ (در انتظار تأیید)" if b["status"] == "pending" else "") for b in bd] or ["—"])
     fb = conn.execute("SELECT COUNT(*) c FROM feedback WHERE student_id=?", (sid,)).fetchone()["c"]
     lines.append(f"\nبازخوردهای ثبت‌شده: {fa(fb)}")
+    if s["grade"] == 9:
+        lines += ["", "📖 باشگاه کتابخوانی:"] + student_book_report(conn, s).split("\n")[1:]    # بدون تکرار سطر نام
     return "\n".join(lines)
 
 
@@ -115,7 +115,7 @@ def build_xlsx(app, path: Path) -> Path:
             width = max(len(str(c.value or "")) for c in col)
             ws.column_dimensions[col[0].column_letter].width = min(max(12, width + 3), 38)
 
-    studs = conn.execute("SELECT * FROM students WHERE active=1 AND grade IN (6,7) ORDER BY grade, full_name").fetchall()
+    studs = conn.execute("SELECT * FROM students WHERE active=1 AND grade IN (6,7,9) ORDER BY grade, full_name").fetchall()
     ws = wb.active
     ws.title = "خلاصه"
     ws.append(["نام", "پایه", "گروه‌ها", "الزامی: به‌موقع", "الزامی: با تاخیر", "الزامی: ناقص", "الزامی: ارسال‌نشده",

@@ -66,11 +66,6 @@ def route_callback(app: App, ctx: Ctx, parts):
             student.start_login(app, ctx)
             return
         student.learn_username(app, st, ctx.username)
-        if st["grade"] == 9:  # نهمی‌ها فقط باشگاه کتابخوانی را دارند
-            if parts[1:2] == ["home"]:
-                app.clear_state(ctx.chat_id)
-            student.home(app, ctx, st)
-            return
         student.on_callback(app, ctx, st, parts)
     elif kind == "b":
         st = app.student_by_chat(ctx.chat_id)
@@ -119,7 +114,7 @@ def route_message(app: App, ctx: Ctx, msg: dict):
     st = app.student_by_chat(ctx.chat_id)
     if st:
         student.learn_username(app, st, ctx.username)
-        if st["grade"] == 9:
+        if st["grade"] == 9 and app.get_state(ctx.chat_id)[0].startswith("b:"):
             books.on_message(app, ctx, st, msg)
         else:
             student.on_message(app, ctx, st, msg)

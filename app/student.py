@@ -20,8 +20,11 @@ def menu_rows(st):
     """منوی دانش‌آموز؛ پایه‌ی هفتم نشان و امتیاز ندارد."""
     if st["grade"] in R.GAMIFIED_GRADES:
         return MENU
-    return [[btn("📚 تکالیف باز", "s:open"), btn("✅ ارسال‌های من", "s:done")],
+    rows = [[btn("📚 تکالیف باز", "s:open"), btn("✅ ارسال‌های من", "s:done")],
             [btn("📈 پیشرفت من", "s:prog"), btn("💬 بازخوردها", "s:fb")]]
+    if st["grade"] == 9:     # نهمی: تکلیف + باشگاه کتابخوانی
+        rows.append([btn("📖 باشگاه کتابخوانی", "b:home")])
+    return rows
 
 
 MENU = [[btn("📚 تکالیف باز", "s:open"), btn("✅ ارسال‌های من", "s:done")],
@@ -142,10 +145,6 @@ def on_code(app: App, ctx: Ctx, text: str):
 
 
 def home(app: App, ctx: Ctx, st):
-    if st["grade"] == 9:
-        from . import books
-        books.home(app, ctx, st)
-        return
     app.show(ctx, f"سلام {st['full_name']} 👋\nچه کاری می‌خواهی انجام بدهی؟", menu_rows(st))
 
 
@@ -189,7 +188,7 @@ def progress(app: App, ctx: Ctx, st):
         app.show(ctx, "\n".join([
             "📈 پیشرفت تو", "",
             f"تکالیف الزامی: ✅ {fa(t['on_time'])} به‌موقع | ⏰ {fa(t['late'])} با تاخیر | ⚠️ {fa(t['incomplete'])} ناقص | ❌ {fa(t['missed'])} ارسال‌نشده",
-            f"تکالیف اختیاری/امتیازی انجام‌شده: {fa(t['extra_done'])}",
+            f"تمرین بیشتر/امتیازی انجام‌شده: {fa(t['extra_done'])}",
             "", "به‌موقع فرستادن و کامل فرستادن را ادامه بده 💪"]), BACK)
         return
     bd = app.conn.execute("SELECT title FROM badges WHERE student_id=? AND status='approved' ORDER BY awarded_ts", (st["id"],)).fetchall()
@@ -199,7 +198,7 @@ def progress(app: App, ctx: Ctx, st):
              "", f"مسیر نشان بعدی: {fa(t['current'])} از {fa(n)}", bar,
              f"(هر {fa(n)} تکلیف الزامی پشت‌سرهم و به‌موقع = یک نشان. یک تاخیر یا ارسال‌نشدن، شمارش را از صفر شروع می‌کند.)",
              "", f"⭐ امتیاز تو: {fa(t['points'])}" + (f"  (در انتظار تأیید مدیر: {fa(t['points_pending'])})" if t["points_pending"] else ""),
-             f"(هر {fa(app.cfg.extra_streak_size)} تکلیف اختیاری/امتیازی پشت‌سرهم و به‌موقع = یک نشان کوشا با {fa(app.cfg.extra_streak_points)} امتیاز)",
+             f"(هر {fa(app.cfg.extra_streak_size)} تمرین بیشتر/امتیازی پشت‌سرهم و به‌موقع = یک نشان کوشا با {fa(app.cfg.extra_streak_points)} امتیاز)",
              "", "نشان‌های تو:"]
     lines += [f"• {b['title']}" for b in bd] or ["هنوز نشانی نگرفته‌ای؛ اولین‌ش نزدیک است 💪"]
     app.show(ctx, "\n".join(lines), BACK)
