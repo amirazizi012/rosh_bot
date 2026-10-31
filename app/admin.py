@@ -643,6 +643,7 @@ def sview(app: App, ctx: Ctx, sid: int):
     rows = top + [
             [btn("📥 همه‌ی پاسخ‌هایش", f"a:stzip:{sid}"), btn("✏ تغییر نام", f"a:stname:{sid}")],
             [btn("🆔 یوزرنیم بله", f"a:stun:{sid}"), btn("🔓 بازنشانی ورود", f"a:streset:{sid}")],
+            [btn("✉ ارسال پیام به او", f"a:bct:s{sid}")],
             [btn("▶ فعال‌سازی" if not s["active"] else "⏸ غیرفعال‌سازی", f"a:sttog:{sid}")],
             [btn("⬅ فهرست", f"a:sf:{s['grade']}:0")]]
     app.show(ctx, text, rows)
@@ -860,11 +861,37 @@ def bc_start(app, ctx):
             [btn("پایه‌ی ششم", "a:bct:g6"), btn("پایه‌ی هفتم", "a:bct:g7"), btn("پایه‌ی نهم", "a:bct:g9")]]
     for g in app.conn.execute("SELECT * FROM groups ORDER BY name"):
         rows.append([btn(f"🗂 {g['name']}", f"a:bct:{g['id']}")])
+    rows.append([btn("👤 یک نفر مشخص", "a:bcp")])
     rows.append([btn("⬅ پنل مدیریت", "a:menu")])
     app.show(ctx, "📢 پیام برای چه کسانی ارسال شود؟", rows)
 
 
+def bc_pick(app, ctx, grade=None, offset=0):
+    """انتخاب یک دانش‌آموز برای پیام تکی: اول پوشه‌ی پایه، بعد نام."""
+    if grade is None:
+        rows = [[btn(f"📁 پایه‌ی {name}", f"a:bcp:{g}:0")] for g, name in sorted(R.GRADE_NAME.items())]
+        rows.append([btn("⬅ پیام همگانی", "a:bc")])
+        app.show(ctx, "پیام برای کدام پایه‌ی دانش‌آموز؟", rows)
+        return
+    step = PAGE + 4
+    studs = app.conn.execute("SELECT * FROM students WHERE grade=? AND active=1 ORDER BY full_name LIMIT ? OFFSET ?",
+                             (grade, step, offset)).fetchall()
+    total = app.conn.execute("SELECT COUNT(*) c FROM students WHERE grade=? AND active=1", (grade,)).fetchone()["c"]
+    rows = [[btn(("✔ " if s["chat_id"] else "🕓 ") + s["full_name"], f"a:bct:s{s['id']}")] for s in studs]
+    nav = []
+    if offset > 0:
+        nav.append(btn("◀ قبلی", f"a:bcp:{grade}:{max(0, offset - step)}"))
+    if offset + step < total:
+        nav.append(btn("بعدی ▶", f"a:bcp:{grade}:{offset + step}"))
+    if nav:
+        rows.append(nav)
+    rows.append([btn("⬅ پایه‌ها", "a:bcp")])
+    app.show(ctx, f"👤 پایه‌ی {R.GRADE_NAME.get(grade, '')}: پیام برای چه کسی؟\n✔ وارد شده | 🕓 هنوز وارد بات نشده (پیام به او نمی‌رسد)", rows)
+
+
 def bc_recipients(app, target):
+    if target[:1] == "s" and target[1:].isdigit():       # پیام به یک نفر
+        return app.conn.execute("SELECT * FROM students WHERE id=? AND active=1 AND chat_id IS NOT NULL", (int(target[1:]),)).fetchall()
     if target == "all":
         return app.conn.execute("SELECT * FROM students WHERE active=1 AND chat_id IS NOT NULL").fetchall()
     if target in ("g6", "g7", "g9"):
@@ -879,8 +906,13 @@ def st_bct(app, ctx, msg, text, data):
         app.send(ctx.chat_id, "متن پیام را بنویس.")
         return
     n = len(bc_recipients(app, data["target"]))
+    if not n:
+        app.clear_state(ctx.chat_id)
+        app.send(ctx.chat_id, "گیرنده‌ای پیدا نشد (دانش‌آموز هنوز وارد بات نشده یا غیرفعال است).", [[btn("⬅ پیام همگانی", "a:bc")]])
+        return
     app.set_state(ctx.chat_id, "a:bcconfirm", {"target": data["target"], "text": raw})
-    app.send(ctx.chat_id, f"🔎 پیش‌نمایش (به {fa(n)} نفر ارسال می‌شود):\n\n📢 پیام مجموعه رشد\n\n{raw}",
+    who = bc_recipients(app, data["target"])[0]["full_name"] if data["target"][:1] == "s" and data["target"][1:].isdigit() else f"{fa(n)} نفر"
+    app.send(ctx.chat_id, f"🔎 پیش‌نمایش (به {who} ارسال می‌شود):\n\n📢 پیام مجموعه رشد\n\n{raw}",
              [[btn("✅ ارسال", "a:bcsend"), btn("❌ لغو", "a:menu")]])
 
 
@@ -1177,6 +1209,8 @@ def on_callback(app: App, ctx: Ctx, parts):
     # پیام همگانی
     elif c == "bc":
         bc_start(app, ctx)
+    elif c == "bcp":
+        bc_pick(app, ctx, i(0) if arg else None, i(1) if len(arg) > 1 else 0)
     elif c == "bct":
         app.set_state(ctx.chat_id, "a:bct", {"target": arg[0]})
         app.send(ctx.chat_id, "متن پیام را بنویس:")

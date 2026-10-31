@@ -128,7 +128,7 @@ flowchart LR
 - بررسی پاسخ (ADR 0005): `arv rv rvl rvn rvs`
 - دانش‌آموز (پوشه‌ی پایه: `slist` ← `sf:<پایه>:<offset>` ← `st`): `slist sf st stg stgrp sttog stname stun uns sadd spts sbd sbdd sbddy sbde stzip strep streset codes lfail`
 - گروه: `g glist gnew gadd gdel gdely gt`
-- گزارش و اعلان: `rep rall rone rrecent rxlsx rbadges bc bct bcconfirm bcsend fb fbs`
+- گزارش و اعلان: `rep rall rone rrecent rxlsx rbadges fb fbs`؛ پیام: `bc` (همه/پایه/گروه) ← `bcp` (انتخاب یک نفر: پایه ← نام) ← `bct:<all|g6|g7|g9|id گروه|s<id دانش‌آموز>>` ← `bcconfirm bcsend`
 - امتیاز/نشان: `pts pok pno pall padj badge bok bno bds`
 - باشگاه کتابخوانی (مدیر): `book bke bkp`
 - مدیران و پنل: `adm admadd admdel web menu`
@@ -256,9 +256,9 @@ flowchart LR
 
 > برای جست‌وجوی سریع «تابع کجاست». بعد از `python scripts/map.py` این بخش را بازسازی کن.
 
-**`app/admin.py`** (1236 خط)
+**`app/admin.py`** (1270 خط)
 
-`menu`, `student_buttons`, `tell`, `notify_new_badges`, `open_btn`, `notify_assignment`, `target_text`, `group_rows_toggle`, `new_start`, `st_ntitle`, `st_nbody`, `new_kind`, `ask_points`, `st_npts`, `new_target`, `ask_deadline`, `st_ndl`, `publish`, `new_cancel`, `alist`, `tally`, `aview`, `astatus`, `aview_pick`, `asub_view`, `azip`, `aremind`, `ask_ext_all`, `st_aextv`, `st_aext1v`, `st_aedit`, `st_aexc`, `st_ars`, `slist`, `sflist`, `new_code`, `parse_student_line`, `st_sadd`, `codes`, `st_uns`, `st_stun`, `login_fails`, `sview`, `stgrp`, `stg_toggle`, `st_stname`, `streset`, `sttog`, `stzip`, `glist`, `st_gnew`, `gview`, `gmembers`, `gt_toggle`, `gdel`, `rep_menu`, `rep_xlsx`, `rep_recent`, `rep_badges`, `strep`, `ask_feedback`, `st_fb`, `bc_start`, `bc_recipients`, `st_bct`, `bc_send`, `st_bds`, `adm_view`, `st_admadd`, `web_login`, `on_message`, `_pending`, `on_callback`
+`menu`, `student_buttons`, `tell`, `notify_new_badges`, `open_btn`, `notify_assignment`, `target_text`, `group_rows_toggle`, `new_start`, `st_ntitle`, `st_nbody`, `new_kind`, `ask_points`, `st_npts`, `new_target`, `ask_deadline`, `st_ndl`, `publish`, `new_cancel`, `alist`, `tally`, `aview`, `astatus`, `aview_pick`, `asub_view`, `azip`, `aremind`, `ask_ext_all`, `st_aextv`, `st_aext1v`, `st_aedit`, `st_aexc`, `st_ars`, `slist`, `sflist`, `new_code`, `parse_student_line`, `st_sadd`, `codes`, `st_uns`, `st_stun`, `login_fails`, `sview`, `stgrp`, `stg_toggle`, `st_stname`, `streset`, `sttog`, `stzip`, `glist`, `st_gnew`, `gview`, `gmembers`, `gt_toggle`, `gdel`, `rep_menu`, `rep_xlsx`, `rep_recent`, `rep_badges`, `strep`, `ask_feedback`, `st_fb`, `bc_start`, `bc_pick`, `bc_recipients`, `st_bct`, `bc_send`, `st_bds`, `adm_view`, `st_admadd`, `web_login`, `on_message`, `_pending`, `on_callback`
 
 **`app/bale.py`** (120 خط) — کلاس‌ها: BaleError, Bale
 

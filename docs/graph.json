@@ -1,10 +1,10 @@
 {
-  "generated_at": "2026-10-31T18:17:48+00:00",
+  "generated_at": "2026-10-31T18:27:06+00:00",
   "generator": "scripts/map.py",
   "modules": [
     {
       "file": "app/admin.py",
-      "lines": 1236,
+      "lines": 1270,
       "functions": [
         "menu",
         "student_buttons",
@@ -69,6 +69,7 @@
         "ask_feedback",
         "st_fb",
         "bc_start",
+        "bc_pick",
         "bc_recipients",
         "st_bct",
         "bc_send",

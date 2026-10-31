@@ -320,6 +320,39 @@ def test_broadcast_by_grade_and_reports_filter_by_grade():
     assert any(b["callback_data"] == "a:sf:6:0" for row in bale.out[-1][2] for b in row)
 
 
+def test_message_to_one_student_and_to_a_group():
+    app, bale = setup()
+    s9 = app.conn.execute("SELECT id FROM students WHERE full_name='مهدی نمونه'").fetchone()["id"]
+    # پیام تکی از مسیر «پیام همگانی ← یک نفر مشخص ← پوشه‌ی پایه ← نام»
+    go(app, upd(ADMIN, data="a:bc"))
+    assert any(b["callback_data"] == "a:bcp" for row in bale.out[-1][2] for b in row)
+    go(app, upd(ADMIN, data="a:bcp"))
+    assert any(b["callback_data"] == "a:bcp:9:0" for row in bale.out[-1][2] for b in row)
+    go(app, upd(ADMIN, data="a:bcp:9:0"))
+    assert any(b["callback_data"] == f"a:bct:s{s9}" for row in bale.out[-1][2] for b in row)
+    n6 = len(bale.texts(S6))
+    go(app, upd(ADMIN, data=f"a:bct:s{s9}"), upd(ADMIN, "فقط برای مهدی"))
+    assert "مهدی نمونه" in bale.texts(ADMIN)[-1]
+    go(app, upd(ADMIN, data="a:bcsend"))
+    assert any("فقط برای مهدی" in t for t in bale.texts(STU)) and len(bale.texts(S6)) == n6
+    assert app.conn.execute("SELECT details FROM audit WHERE action='broadcast' ORDER BY id DESC").fetchone()["details"] == f"s{s9}:1"
+    # دانش‌آموزی که هنوز وارد بات نشده: پیام نمی‌رود و مدیر خبردار می‌شود
+    go(app, upd(ADMIN, data="a:sadd"), upd(ADMIN, data="a:sadd:9"), upd(ADMIN, "نیامده نمونه"))
+    nid = app.conn.execute("SELECT id FROM students WHERE full_name='نیامده نمونه'").fetchone()["id"]
+    go(app, upd(ADMIN, data=f"a:bct:s{nid}"), upd(ADMIN, "سلام"))
+    assert "گیرنده‌ای پیدا نشد" in bale.texts(ADMIN)[-1]
+    # دکمه‌ی «ارسال پیام» در پروفایل دانش‌آموز
+    go(app, upd(ADMIN, data=f"a:st:{s9}"))
+    assert any(b["callback_data"] == f"a:bct:s{s9}" for row in bale.out[-1][2] for b in row)
+    # پیام به یک گروه (گروه‌های مجموعه)
+    app.conn.execute("INSERT INTO groups(name) VALUES('تقویتی')")
+    gid = app.conn.execute("SELECT id FROM groups").fetchone()["id"]
+    s6 = app.conn.execute("SELECT id FROM students WHERE full_name='علی ششمی'").fetchone()["id"]
+    app.conn.execute("INSERT INTO student_groups VALUES(?,?)", (s6, gid)); app.conn.commit()
+    go(app, upd(ADMIN, data=f"a:bct:{gid}"), upd(ADMIN, "برای گروه تقویتی"), upd(ADMIN, data="a:bcsend"))
+    assert any("برای گروه تقویتی" in t for t in bale.texts(S6)) and not any("برای گروه تقویتی" in t for t in bale.texts(STU))
+
+
 def test_polling_pause():
     assert main.needs_pause([], 0.01) is True
     assert main.needs_pause([], 20.0) is False and main.needs_pause([{"update_id": 1}], 0.01) is False
