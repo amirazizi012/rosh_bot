@@ -55,7 +55,9 @@ def test_add_grade7_and_menus():
     assert any("🏅 نشان‌ها و پیشرفت" in b["text"] for row in bale.out[-1][2] for b in row)
     # فهرست مدیر پایه را نشان می‌دهد
     go(app, upd(ADMIN, data="a:slist:0"))
-    assert any("رضا هفتمی (هفتم)" in b["text"] for row in bale.out[-1][2] for b in row)
+    assert any(b["text"].startswith("📁 پایه‌ی هفتم") for row in bale.out[-1][2] for b in row)
+    go(app, upd(ADMIN, data="a:sf:7:0"))
+    assert any("رضا هفتمی" in b["text"] for row in bale.out[-1][2] for b in row)
 
 
 def test_assignment_targeting_by_grade():

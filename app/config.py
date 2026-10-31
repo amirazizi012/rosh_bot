@@ -37,7 +37,7 @@ class Config:
     extra_streak_points: int = 10
     streak_points: int = 0               # امتیاز نشان پشتکار (۶ الزامی پشت‌سرهم)؛ صفر = بدون امتیاز
     book_max_pages: int = 300
-    book_max_days_back: int = 45
+    book_window_days: int = 7             # مهلت ثبت هر بخش روز: تا چند روز بعد از پایان آن
     panel_secure_cookie: bool = False
     panel_trust_proxy: bool = False
     panel_enable: bool = False
@@ -75,7 +75,7 @@ def load() -> Config:
         extra_streak_points=_int("EXTRA_STREAK_POINTS", 10),
         streak_points=_int("STREAK_POINTS", 0),
         book_max_pages=_int("BOOK_MAX_PAGES", 300),
-        book_max_days_back=_int("BOOK_MAX_DAYS_BACK", 45),
+        book_window_days=_int("BOOK_WINDOW_DAYS", 7),
         panel_secure_cookie=os.environ.get("PANEL_SECURE_COOKIE", "0") == "1",
         panel_trust_proxy=os.environ.get("PANEL_TRUST_PROXY", "0") == "1",
         panel_enable=os.environ.get("PANEL_ENABLE", "0") == "1",

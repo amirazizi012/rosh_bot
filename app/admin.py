@@ -454,25 +454,45 @@ def st_ars(app, ctx, msg, text, data):
 
 
 # ---------- دانش‌آموزان ----------
-def slist(app: App, ctx: Ctx, offset: int):
-    total = app.conn.execute("SELECT COUNT(*) c FROM students").fetchone()["c"]
-    studs = app.conn.execute("SELECT * FROM students ORDER BY active DESC, full_name LIMIT ? OFFSET ?", (PAGE + 4, offset)).fetchall()
-    step = PAGE + 4
+def slist(app: App, ctx: Ctx, offset: int = 0):
+    """سطح اول: پوشه‌ی هر پایه (با شمار دانش‌آموزان). داخل پوشه: `sflist`."""
     rows = []
-    for s in studs:
-        mark = "⏸" if not s["active"] else ("✔" if s["chat_id"] else "🕓")
-        rows.append([btn(f"{mark} {s['full_name']} ({R.GRADE_NAME.get(s['grade'], 'ششم')})", f"a:st:{s['id']}")])
-    nav = []
-    if offset > 0:
-        nav.append(btn("◀ قبلی", f"a:slist:{max(0, offset - step)}"))
-    if offset + step < total:
-        nav.append(btn("بعدی ▶", f"a:slist:{offset + step}"))
-    if nav:
-        rows.append(nav)
+    for g, name in sorted(R.GRADE_NAME.items()):
+        n = app.conn.execute("SELECT COUNT(*) c FROM students WHERE grade=?", (g,)).fetchone()["c"]
+        wait = app.conn.execute("SELECT COUNT(*) c FROM students WHERE grade=? AND active=1 AND chat_id IS NULL", (g,)).fetchone()["c"]
+        rows.append([btn(f"📁 پایه‌ی {name} ({fa(n)} نفر" + (f"، {fa(wait)} ورود نشده" if wait else "") + ")", f"a:sf:{g}:0")])
     rows.append([btn("➕ افزودن دانش‌آموز", "a:sadd"), btn("🆔 فهرست یوزرنیم‌ها", "a:codes")])
     rows.append([btn("📝 ثبت گروهی یوزرنیم", "a:uns"), btn("🕓 ورود نشده‌ها", "a:lfail")])
     rows.append([btn("⬅ پنل مدیریت", "a:menu")])
-    app.show(ctx, f"👥 دانش‌آموزان ({fa(total)} نفر)\n✔ وارد شده | 🕓 هنوز وارد نشده | ⏸ غیرفعال", rows)
+    total = app.conn.execute("SELECT COUNT(*) c FROM students").fetchone()["c"]
+    app.show(ctx, f"👥 دانش‌آموزان ({fa(total)} نفر)\nپوشه‌ی پایه‌ی موردنظر را بزن.", rows)
+
+
+def sflist(app: App, ctx: Ctx, grade: int, offset: int = 0):
+    """فهرست دانش‌آموزان یک پایه (صفحه‌بندی‌شده)."""
+    name = R.GRADE_NAME.get(grade)
+    if name is None:
+        slist(app, ctx)
+        return
+    total = app.conn.execute("SELECT COUNT(*) c FROM students WHERE grade=?", (grade,)).fetchone()["c"]
+    step = PAGE + 4
+    studs = app.conn.execute("SELECT * FROM students WHERE grade=? ORDER BY active DESC, full_name LIMIT ? OFFSET ?",
+                             (grade, step, offset)).fetchall()
+    rows = []
+    for s in studs:
+        mark = "⏸" if not s["active"] else ("✔" if s["chat_id"] else "🕓")
+        rows.append([btn(f"{mark} {s['full_name']}", f"a:st:{s['id']}")])
+    nav = []
+    if offset > 0:
+        nav.append(btn("◀ قبلی", f"a:sf:{grade}:{max(0, offset - step)}"))
+    if offset + step < total:
+        nav.append(btn("بعدی ▶", f"a:sf:{grade}:{offset + step}"))
+    if nav:
+        rows.append(nav)
+    rows.append([btn("➕ افزودن به این پایه", f"a:sadd:{grade}")])
+    rows.append([btn("⬅ پوشه‌ها", "a:slist:0")])
+    body = f"📁 پایه‌ی {name} ({fa(total)} نفر)\n✔ وارد شده | 🕓 هنوز وارد نشده | ⏸ غیرفعال" if total else f"📁 پایه‌ی {name}\nهنوز دانش‌آموزی در این پایه نیست."
+    app.show(ctx, body, rows)
 
 
 def new_code(app: App) -> str:
@@ -624,7 +644,7 @@ def sview(app: App, ctx: Ctx, sid: int):
             [btn("📥 همه‌ی پاسخ‌هایش", f"a:stzip:{sid}"), btn("✏ تغییر نام", f"a:stname:{sid}")],
             [btn("🆔 یوزرنیم بله", f"a:stun:{sid}"), btn("🔓 بازنشانی ورود", f"a:streset:{sid}")],
             [btn("▶ فعال‌سازی" if not s["active"] else "⏸ غیرفعال‌سازی", f"a:sttog:{sid}")],
-            [btn("⬅ فهرست", "a:slist:0")]]
+            [btn("⬅ فهرست", f"a:sf:{s['grade']}:0")]]
     app.show(ctx, text, rows)
 
 
@@ -1080,10 +1100,12 @@ def on_callback(app: App, ctx: Ctx, parts):
         alist(app, ctx, 0)
     # دانش‌آموزان
     elif c == "slist":
-        slist(app, ctx, i(0))
+        slist(app, ctx)
+    elif c == "sf":
+        sflist(app, ctx, i(0), i(1) if len(arg) > 1 else 0)
     elif c == "sadd":
         if not arg:
-            app.show(ctx, "دانش‌آموزان کدام پایه را اضافه می‌کنی؟\n(ششم: تکالیف + نشان و امتیاز | هفتم: تکالیف بدون نشان و امتیاز | نهم: باشگاه کتابخوانی)",
+            app.show(ctx, "دانش‌آموزان کدام پایه را اضافه می‌کنی؟\n(ششم: تکالیف + نشان و امتیاز | هفتم: تکالیف بدون نشان و امتیاز | نهم: تکلیف بدون نشان و امتیاز + باشگاه کتابخوانی)",
                      [[btn("پایه‌ی ششم", "a:sadd:6"), btn("پایه‌ی هفتم", "a:sadd:7"), btn("پایه‌ی نهم", "a:sadd:9")], [btn("⬅ فهرست", "a:slist:0")]])
         else:
             g = int(arg[0]) if arg[0] in ("6", "7", "9") else 6

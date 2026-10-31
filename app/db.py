@@ -92,7 +92,7 @@ CREATE TABLE IF NOT EXISTS chat_state(chat_id INTEGER PRIMARY KEY, state TEXT, d
 CREATE TABLE IF NOT EXISTS book_reports(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   student_id INTEGER NOT NULL,
-  day1_ts INTEGER NOT NULL, day2_ts INTEGER NOT NULL,      -- ظهر روز اول و دوم (ساعت ایران)
+  day1_ts INTEGER NOT NULL, day2_ts INTEGER NOT NULL,      -- ظهر اولین و آخرین روز بخش (ساعت ایران)؛ بخش‌ها: شنبه‌یکشنبه | دوشنبه‌سه‌شنبه | چهارشنبه‌تا‌جمعه
   book TEXT NOT NULL,
   from_page INTEGER NOT NULL, to_page INTEGER NOT NULL, pages INTEGER NOT NULL,
   status TEXT NOT NULL DEFAULT 'active',                   -- active | deleted

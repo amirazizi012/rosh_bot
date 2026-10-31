@@ -33,12 +33,14 @@ noon = J.noon
 
 
 def pair_label(d1: int, d2: int) -> str:
-    """«دوشنبه و سه‌شنبه ۱۳ و ۱۴ مهر» (اگر ماه فرق کند: «... ۳۰ مهر و ۱ آبان»)"""
+    """«دوشنبه و سه‌شنبه ۱۳ و ۱۴ مهر»؛ بخش سه‌روزه: «چهارشنبه تا جمعه ۱۵ تا ۱۷ مهر».
+    اگر ماه فرق کند: «... ۲۹ مهر تا ۱ آبان»."""
     j1, j2 = J.jdate(d1), J.jdate(d2)
     w1, w2 = J.weekday_name(d1), J.weekday_name(d2)
+    sep = "تا" if d2 - d1 >= 2 * DAY else "و"
     if j1[:2] == j2[:2]:
-        return fa(f"{w1} و {w2} {j1[2]} و {j2[2]} {J.MONTHS[j1[1] - 1]}")
-    return fa(f"{w1} و {w2} {j1[2]} {J.MONTHS[j1[1] - 1]} و {j2[2]} {J.MONTHS[j2[1] - 1]}")
+        return fa(f"{w1} {sep} {w2} {j1[2]} {sep} {j2[2]} {J.MONTHS[j1[1] - 1]}")
+    return fa(f"{w1} {sep} {w2} {j1[2]} {J.MONTHS[j1[1] - 1]} {sep} {j2[2]} {J.MONTHS[j2[1] - 1]}")
 
 
 def report_text(name, d1, d2, book, a, b) -> str:
@@ -48,9 +50,24 @@ def report_text(name, d1, d2, book, a, b) -> str:
             f"از صفحه *{fa(a)}* تا صفحه *{fa(b)}* *({fa(b - a + 1)} صفحه)*")
 
 
-def recent_pairs(now: int, n: int = 6):
+# هفته‌ی ایرانی سه بخش ثابت دارد (کلید: weekday() پایتون؛ شنبه=۵، دوشنبه=۰، چهارشنبه=۲ ← تعداد روزهای بخش)
+BLOCK_DAYS = {5: 2, 0: 2, 2: 3}      # شنبه‌یکشنبه | دوشنبه‌سه‌شنبه | چهارشنبه‌پنجشنبه‌جمعه
+
+
+def recent_blocks(now: int, window_days: int = 7):
+    """بخش‌های روزی که الان قابل ثبت‌اند، جدیدترین اول: از روزِ آخر بخش به بعد، تا `window_days` روز پس از آن.
+    نتیجه: [(روز_اول، روز_آخر)] با ساعت ظهر ایران."""
     today = noon(now)
-    return [(today - i * DAY - DAY, today - i * DAY) for i in range(n)]
+    out = []
+    for back in range(0, window_days + 4):
+        d1 = today - back * DAY
+        n = BLOCK_DAYS.get(J.to_dt(d1).weekday())
+        if not n:
+            continue
+        d2 = d1 + (n - 1) * DAY
+        if d2 <= today and today - d2 <= window_days * DAY:
+            out.append((d1, d2))
+    return out
 
 
 def _int(text, lo=1, hi=99999):
@@ -70,8 +87,11 @@ def prev_books(conn, sid, n=3):
     return out
 
 
-def has_report(conn, sid, d1) -> bool:
-    return conn.execute("SELECT 1 FROM book_reports WHERE student_id=? AND day1_ts=? AND status='active'", (sid, d1)).fetchone() is not None
+def has_report(conn, sid, d1, d2=None) -> bool:
+    """آیا برای این بخش گزارشی هست؟ (هر گزارشی که با بازه هم‌پوشانی دارد؛ گزارش‌های قدیمیِ دوروزه هم حساب می‌شوند)"""
+    d2 = d1 if d2 is None else d2
+    return conn.execute("SELECT 1 FROM book_reports WHERE student_id=? AND status='active' AND day1_ts<=? AND day2_ts>=?",
+                        (sid, d2, d1)).fetchone() is not None
 
 
 # ---------- ارسال به گروه ----------
@@ -106,15 +126,18 @@ def record_group(app: App, chat_id: int, title: str):
 # ---------- پایه‌ی نهم: ثبت گزارش ----------
 def start(app: App, ctx: Ctx, st):
     app.clear_state(ctx.chat_id)
-    rows = [[btn(pair_label(d1, d2), f"b:d:{i}")] for i, (d1, d2) in enumerate(recent_pairs(app.now()))]
-    rows.append([btn("📅 تاریخ دلخواه", "b:dx")])
+    rows = []
+    for d1, d2 in recent_blocks(app.now(), app.cfg.book_window_days):
+        mark = "✅ " if has_report(app.conn, st["id"], d1, d2) else ""
+        rows.append([btn(mark + pair_label(d1, d2), f"b:d:{d1}")])
     rows.append([btn("⬅ منوی اصلی", "s:home")])
-    app.show(ctx, "📖 گزارش مطالعه برای کدام «دو روز» است؟", rows)
+    app.show(ctx, "📖 گزارش مطالعه برای کدام بخش از روزهاست؟\n"
+                  "(شنبه و یکشنبه | دوشنبه و سه‌شنبه | چهارشنبه تا جمعه؛ تا یک هفته بعد از پایان هر بخش وقت داری. ✅ یعنی ثبت شده.)", rows)
 
 
 def _choose_pair(app, ctx, st, d1, d2):
-    if has_report(app.conn, st["id"], d1):
-        app.send(ctx.chat_id, "برای این دو روز قبلاً گزارش ثبت کرده‌ای. اگر اشتباهی شده، از مدیر بخواه اصلاحش کند.", BACK)
+    if has_report(app.conn, st["id"], d1, d2):
+        app.send(ctx.chat_id, "برای این بخش از روزها قبلاً گزارش ثبت کرده‌ای. اگر اشتباهی شده، از مدیر بخواه اصلاحش کند.", BACK)
         return
     app.set_state(ctx.chat_id, "b:book", {"d1": d1, "d2": d2})
     rows = [[btn(f"📕 {b}"[:50], f"b:pb:{i}")] for i, b in enumerate(prev_books(app.conn, st["id"]))]
@@ -143,13 +166,12 @@ def on_callback(app: App, ctx: Ctx, st, parts):
     elif c == "new":
         start(app, ctx, st)
     elif c == "d":
-        i = int(parts[2])
-        pairs = recent_pairs(app.now())
-        if 0 <= i < len(pairs):
-            _choose_pair(app, ctx, st, *pairs[i])
-    elif c == "dx":
-        app.set_state(ctx.chat_id, "b:date", {})
-        app.send(ctx.chat_id, "تاریخ «روز اول» را بنویس؛ روز دوم خودکار روز بعدش است.\nمثال: ۱۴۰۵/۰۷/۱۳", [[btn("❌ لغو", "b:cancel")]])
+        d1 = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 0
+        blk = dict(recent_blocks(app.now(), app.cfg.book_window_days))
+        if d1 in blk:
+            _choose_pair(app, ctx, st, d1, blk[d1])
+        else:
+            app.send(ctx.chat_id, "مهلت ثبت این بخش تمام شده است. اگر لازم است با مدیر صحبت کن.", BOOK_MENU)
     elif c == "pb" and state == "b:book":
         books = prev_books(app.conn, st["id"])
         i = int(parts[2])
@@ -169,18 +191,7 @@ def on_message(app: App, ctx: Ctx, st, msg):
     state, data = app.get_state(ctx.chat_id)
     text = clean(msg.get("text") or "")
     cap = app.cfg
-    if state == "b:date":
-        d1 = J.parse_date(text)
-        today = noon(app.now())
-        if d1 is None:
-            app.send(ctx.chat_id, "تاریخ را نفهمیدم. مثال: ۱۴۰۵/۰۷/۱۳")
-        elif d1 + DAY > today:
-            app.send(ctx.chat_id, "روز دوم نباید در آینده باشد. تاریخ زودتری بنویس.")
-        elif d1 < today - cap.book_max_days_back * DAY:
-            app.send(ctx.chat_id, f"بیش از {fa(cap.book_max_days_back)} روز گذشته را نمی‌شود ثبت کرد. با مدیر صحبت کن.")
-        else:
-            _choose_pair(app, ctx, st, noon(d1), noon(d1) + DAY)
-    elif state == "b:book":
+    if state == "b:book":
         if not (2 <= len(text) <= 80):
             app.send(ctx.chat_id, "نام کتاب را بنویس (۲ تا ۸۰ حرف).")
             return
@@ -201,7 +212,7 @@ def on_message(app: App, ctx: Ctx, st, msg):
         elif v < data["from"]:
             app.send(ctx.chat_id, "«تا صفحه» نباید کمتر از «از صفحه» باشد. دوباره بنویس.")
         elif v - data["from"] + 1 > cap.book_max_pages:
-            app.send(ctx.chat_id, f"در دو روز بیشتر از {fa(cap.book_max_pages)} صفحه ثبت نمی‌شود. اگر درست است، با مدیر هماهنگ کن.")
+            app.send(ctx.chat_id, f"در این بخش بیشتر از {fa(cap.book_max_pages)} صفحه ثبت نمی‌شود. اگر درست است، با مدیر هماهنگ کن.")
         else:
             data["to"] = v
             _preview(app, ctx, st, data)

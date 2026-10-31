@@ -126,7 +126,7 @@ flowchart LR
 - تکلیف جدید: `new nb nk np nt ng ngd nbody ntitle npts ndl nconfirm npub ncancel` (مخاطب: `nt:all|g6|g7|g9|groups`؛ نوع: `nk:required|optional|bonus` — «optional» در رابط «تمرین بیشتر» نمایش داده می‌شود)
 - فهرست/نمایش/ویرایش تکلیف: `alist aview aedit aedf aext aext1 aextv aext1s aext1v adel adely aexc aexcs ars arss arem azip asub as ast`
 - بررسی پاسخ (ADR 0005): `arv rv rvl rvn rvs`
-- دانش‌آموز: `slist st stg stgrp sttog stname stun uns sadd spts sbd sbdd sbddy sbde stzip strep streset codes lfail`
+- دانش‌آموز (پوشه‌ی پایه: `slist` ← `sf:<پایه>:<offset>` ← `st`): `slist sf st stg stgrp sttog stname stun uns sadd spts sbd sbdd sbddy sbde stzip strep streset codes lfail`
 - گروه: `g glist gnew gadd gdel gdely gt`
 - گزارش و اعلان: `rep rall rone rrecent rxlsx rbadges bc bct bcconfirm bcsend fb fbs`
 - امتیاز/نشان: `pts pok pno pall padj badge bok bno bds`
@@ -169,7 +169,7 @@ flowchart LR
 | `EXTRA_STREAK_SIZE` / `EXTRA_STREAK_POINTS` | ۵ / ۱۰ | نشان کوشا (تمرین بیشتر/امتیازی) و امتیازش |
 | `REMINDER_HOURS` | ۳ | |
 | `MAX_FILE_MB` | ۱۵ | سقف هر فایل |
-| `BOOK_MAX_PAGES` / `BOOK_MAX_DAYS_BACK` | ۳۰۰ / ۴۵ | محدودیت گزارش کتاب |
+| `BOOK_MAX_PAGES` / `BOOK_WINDOW_DAYS` | ۳۰۰ / ۷ | سقف صفحه‌ی هر گزارش / مهلت ثبت هر بخش روز (روز بعد از پایان بخش) |
 | `PANEL_ENABLE` / `PANEL_HOST` / `PANEL_PORT` / `PANEL_URL` | ۰ / `127.0.0.1` / ۸۰۹۰ / خالی | پنل |
 | `PANEL_SECURE_COOKIE` / `PANEL_TRUST_PROXY` | ۰ / ۰ | پشت پروکسی HTTPS روشن شوند |
 | `LOGIN_MODE` | `username` | `both` یعنی کد ۶ رقمی هم قبول است |
@@ -245,7 +245,7 @@ flowchart LR
 ## ۱۰. قابلیت‌های فعلی (مرجع درست = همین کد)
 
 **دانش‌آموز پایه‌ی ۶/۷/۹** (`student.py`): ورود با یوزرنیم بله، تکالیف باز، ارسال‌های من، ارسال چندعکسه/PDF با پیش‌نویس، ویرایش ارسال تا پایان بازه‌ی تأخیر (۴ روز)، پیشرفت، بازخوردها. فقط ششمی نشان و امتیاز دارد.
-**پایه‌ی ۹ علاوه بر آن** (`books.py`): باشگاه کتابخوانی — دو روز، کتاب، از/تا صفحه، پیش‌نمایش، ثبت و ارسال خودکار به گروه بله، گزارش‌های من.
+**پایه‌ی ۹ علاوه بر آن** (`books.py`): باشگاه کتابخوانی — یکی از سه بخش روز هفته‌ی ایرانی (شنبه‌یکشنبه | دوشنبه‌سه‌شنبه | چهارشنبه‌تا‌جمعه، تا یک هفته بعد از پایان)، کتاب، از/تا صفحه، پیش‌نمایش، ثبت و ارسال خودکار به گروه بله، گزارش‌های من.
 **مدیر** (`admin.py`, `review.py`, `points.py`, `books.py`): ساخت/ویرایش/لغو تکلیف (الزامی، **تمرین بیشتر**، امتیازی) برای همه‌ی پایه‌ها یا یک پایه یا گروه، تمدید مهلت، معافیت، ارسال مجدد، بررسی پاسخ و وضعیت دستی، دانش‌آموزان و گروه‌ها، اعلان همگانی، بازخورد، گزارش/اکسل/ZIP، تأیید نشان و امتیاز (ششم)، گزارش کتابخوانی، `/setgroup`.
 **خودکار** (`scheduler.py`, `rules.py`): یادآوری، پشتیبان روزانه، پاک‌سازی exports، ارفاق ۲۰ دقیقه، ارسال با تأخیر تا ۹۶ ساعت (تکالیف جدید)، نشان پشتکار و کوشا با تأیید مدیر.
 **پنل وب فقط‌خواندنی**: داشبورد، دانش‌آموزان، تکالیف، نشان‌ها، بازخورد، امتیاز، کتابخوانی، لاگ، اکسل؛ صفحه‌ی نهمی هم تکالیف و هم کتابخوانی را نشان می‌دهد.
@@ -256,17 +256,17 @@ flowchart LR
 
 > برای جست‌وجوی سریع «تابع کجاست». بعد از `python scripts/map.py` این بخش را بازسازی کن.
 
-**`app/admin.py`** (1214 خط)
+**`app/admin.py`** (1236 خط)
 
-`menu`, `student_buttons`, `tell`, `notify_new_badges`, `open_btn`, `notify_assignment`, `target_text`, `group_rows_toggle`, `new_start`, `st_ntitle`, `st_nbody`, `new_kind`, `ask_points`, `st_npts`, `new_target`, `ask_deadline`, `st_ndl`, `publish`, `new_cancel`, `alist`, `tally`, `aview`, `astatus`, `aview_pick`, `asub_view`, `azip`, `aremind`, `ask_ext_all`, `st_aextv`, `st_aext1v`, `st_aedit`, `st_aexc`, `st_ars`, `slist`, `new_code`, `parse_student_line`, `st_sadd`, `codes`, `st_uns`, `st_stun`, `login_fails`, `sview`, `stgrp`, `stg_toggle`, `st_stname`, `streset`, `sttog`, `stzip`, `glist`, `st_gnew`, `gview`, `gmembers`, `gt_toggle`, `gdel`, `rep_menu`, `rep_xlsx`, `rep_recent`, `rep_badges`, `strep`, `ask_feedback`, `st_fb`, `bc_start`, `bc_recipients`, `st_bct`, `bc_send`, `st_bds`, `adm_view`, `st_admadd`, `web_login`, `on_message`, `_pending`, `on_callback`
+`menu`, `student_buttons`, `tell`, `notify_new_badges`, `open_btn`, `notify_assignment`, `target_text`, `group_rows_toggle`, `new_start`, `st_ntitle`, `st_nbody`, `new_kind`, `ask_points`, `st_npts`, `new_target`, `ask_deadline`, `st_ndl`, `publish`, `new_cancel`, `alist`, `tally`, `aview`, `astatus`, `aview_pick`, `asub_view`, `azip`, `aremind`, `ask_ext_all`, `st_aextv`, `st_aext1v`, `st_aedit`, `st_aexc`, `st_ars`, `slist`, `sflist`, `new_code`, `parse_student_line`, `st_sadd`, `codes`, `st_uns`, `st_stun`, `login_fails`, `sview`, `stgrp`, `stg_toggle`, `st_stname`, `streset`, `sttog`, `stzip`, `glist`, `st_gnew`, `gview`, `gmembers`, `gt_toggle`, `gdel`, `rep_menu`, `rep_xlsx`, `rep_recent`, `rep_badges`, `strep`, `ask_feedback`, `st_fb`, `bc_start`, `bc_recipients`, `st_bct`, `bc_send`, `st_bds`, `adm_view`, `st_admadd`, `web_login`, `on_message`, `_pending`, `on_callback`
 
 **`app/bale.py`** (120 خط) — کلاس‌ها: BaleError, Bale
 
 `btn`, `keyboard`
 
-**`app/books.py`** (414 خط)
+**`app/books.py`** (425 خط)
 
-`md_safe`, `pair_label`, `report_text`, `recent_pairs`, `_int`, `prev_books`, `has_report`, `group_id`, `post_report`, `record_group`, `start`, `_choose_pair`, `_ask_from`, `_preview`, `on_callback`, `on_message`, `home`, `finish`, `mine`, `a_menu`, `a_group_pick`, `set_group`, `_report_line`, `a_list`, `a_view`, `st_edit_book`, `st_edit_pages`, `admin_callback`
+`md_safe`, `pair_label`, `report_text`, `recent_blocks`, `_int`, `prev_books`, `has_report`, `group_id`, `post_report`, `record_group`, `start`, `_choose_pair`, `_ask_from`, `_preview`, `on_callback`, `on_message`, `home`, `finish`, `mine`, `a_menu`, `a_group_pick`, `set_group`, `_report_line`, `a_list`, `a_view`, `st_edit_book`, `st_edit_pages`, `admin_callback`
 
 **`app/config.py`** (84 خط) — کلاس‌ها: Config
 

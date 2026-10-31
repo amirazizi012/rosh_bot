@@ -36,6 +36,11 @@ def set_group(app):
     go(app, gupd(GROUP, ADMIN, "/setgroup"))
 
 
+def bd(app, i):
+    """callback انتخاب i-امین بخش روزِ قابل ثبت (۰ = جدیدترین)"""
+    return f"b:d:{books.recent_blocks(app.now(), app.cfg.book_window_days)[i][0]}"
+
+
 def report(app, pair_cb, book, a, b, chat=STU):
     go(app, upd(chat, data="b:new"), upd(chat, data=pair_cb), upd(chat, book), upd(chat, str(a)), upd(chat, str(b)), upd(chat, data="b:ok"))
 
@@ -70,13 +75,13 @@ def test_book_report_flow_and_group_post():
     set_group(app)
     assert app.get_setting("book_group_chat_id") == str(GROUP)
     assert any("تنظیم شد" in t for t in bale.texts(GROUP))
-    # دکمه‌های انتخاب روز: ۶ جفت + تاریخ دلخواه
+    # دکمه‌های انتخاب روز: بخش‌های هفته‌ی ایرانی که تا یک هفته‌ی اخیر قابل ثبت‌اند + بازگشت
     go(app, upd(STU, data="b:new"))
     rows = bale.out[-1][2]
     labels = [r[0]["text"] for r in rows]
-    assert labels[0] == "سه‌شنبه و چهارشنبه ۱۴ و ۱۵ مهر" and len(labels) == 8, labels
+    assert labels == ["دوشنبه و سه‌شنبه ۱۳ و ۱۴ مهر", "شنبه و یکشنبه ۱۱ و ۱۲ مهر", "چهارشنبه تا جمعه ۸ تا ۱۰ مهر", "⬅ منوی اصلی"], labels
     # جریان کامل مثل قالب کاربر
-    go(app, upd(STU, data="b:d:1"))                       # دوشنبه و سه‌شنبه ۱۳ و ۱۴ مهر
+    go(app, upd(STU, data=bd(app, 0)))                  # دوشنبه و سه‌شنبه ۱۳ و ۱۴ مهر
     go(app, upd(STU, "اسطوره های موازی"), upd(STU, "۴۵۱"))
     go(app, upd(STU, "۴۷۰"))
     preview = bale.texts(STU)[-1]
@@ -89,10 +94,10 @@ def test_book_report_flow_and_group_post():
                    "از صفحه *۴۵۱* تا صفحه *۴۷۰* *(۲۰ صفحه)*"), msg
     assert any("در گروه هم ارسال شد" in t for t in bale.texts(STU))
     # تکراری برای همان دو روز
-    go(app, upd(STU, data="b:new"), upd(STU, data="b:d:1"))
+    go(app, upd(STU, data="b:new"), upd(STU, data=bd(app, 0)))
     assert "قبلاً گزارش ثبت کرده" in bale.texts(STU)[-1]
     # کتاب قبلی با یک دکمه
-    go(app, upd(STU, data="b:new"), upd(STU, data="b:d:3"))
+    go(app, upd(STU, data="b:new"), upd(STU, data=bd(app, 1)))
     assert any("📕 اسطوره های موازی" in b["text"] for row in bale.out[-1][2] for b in row)
     go(app, upd(STU, data="b:pb:0"))
     assert app.get_state(STU)[0] == "b:from"
@@ -105,16 +110,37 @@ def test_book_report_flow_and_group_post():
     assert app.get_state(STU)[0] == "b:confirm"
     go(app, upd(STU, data="b:cancel"))
     assert app.get_state(STU)[0] == ""
-    # تاریخ دلخواه: آینده رد، گذشته‌ی دور رد، معتبر قبول
-    go(app, upd(STU, data="b:new"), upd(STU, data="b:dx"), upd(STU, "۱۴۰۵/۰۷/۱۵"))
-    assert "آینده" in bale.texts(STU)[-1]
-    go(app, upd(STU, "۱۴۰۵/۰۵/۰۱"))
-    assert "روز گذشته" in bale.texts(STU)[-1]
-    go(app, upd(STU, "۱۴۰۵/۰۷/۰۶"))
-    assert app.get_state(STU)[0] == "b:book"
+    # بخش بیرون از مهلت (یا ساختگی) پذیرفته نمی‌شود
+    go(app, upd(STU, data="b:d:1"))
+    assert "مهلت ثبت" in bale.texts(STU)[-1] and app.get_state(STU)[0] == ""
+    old = int(J.from_jalali(1405, 7, 6, 12, 0))               # دوشنبه ۶ مهر: بیش از یک هفته پیش
+    go(app, upd(STU, data=f"b:d:{old}"))
+    assert "مهلت ثبت" in bale.texts(STU)[-1]
+    # بخش ثبت‌شده با ✅ نشان داده می‌شود
+    go(app, upd(STU, data="b:new"))
+    assert bale.out[-1][2][0][0]["text"].startswith("✅")
     # گزارش‌های من
     go(app, upd(STU, data="b:mine"))
     assert "اسطوره های موازی" in bale.texts(STU)[-1]
+
+
+def test_blocks_follow_iranian_week_and_window():
+    t = lambda m, d: int(J.from_jalali(1405, m, d, 12, 0))     # ۱۵ مهر ۱۴۰۵ چهارشنبه است
+    lab = lambda now: [books.pair_label(a, b) for a, b in books.recent_blocks(now, 7)]
+    # شنبه ۱۸ مهر: بخش چهارشنبه تا جمعه‌ی هفته‌ی قبل تازه تمام شده و اولین گزینه است
+    assert lab(t(7, 18))[0] == "چهارشنبه تا جمعه ۱۵ تا ۱۷ مهر"
+    # چهارشنبه ۱۵ مهر: بخش جاری (چهارشنبه تا جمعه) هنوز تمام نشده و نمی‌آید
+    assert not any(x.startswith("چهارشنبه تا جمعه ۱۵") for x in lab(t(7, 15)))
+    # روز آخر هر بخش از همان روز قابل ثبت است: یکشنبه ۱۲ مهر ← شنبه و یکشنبه ۱۱ و ۱۲
+    assert lab(t(7, 12))[0] == "شنبه و یکشنبه ۱۱ و ۱۲ مهر"
+    # مهلت: دقیقاً ۷ روز بعد از پایان هنوز باز، روز هشتم بسته (شنبه و یکشنبه ۴ و ۵ مهر)
+    blk = (t(7, 4), t(7, 5))
+    assert blk in books.recent_blocks(t(7, 12), 7) and blk not in books.recent_blocks(t(7, 13), 7)
+    # بخش وسط دو ماه
+    assert books.pair_label(t(7, 29), t(8, 1)) == "چهارشنبه تا جمعه ۲۹ مهر تا ۱ آبان"
+    # همیشه حداقل یک بخش و حداکثر چهار بخش
+    for d in range(1, 29):
+        assert 1 <= len(books.recent_blocks(t(7, d), 7)) <= 4, d
 
 
 def test_markdown_chars_are_neutralised():
@@ -125,7 +151,7 @@ def test_markdown_chars_are_neutralised():
 
 def test_admin_book_tools_and_group_failure():
     app, bale = setup()                                    # گروه تنظیم نشده
-    report(app, "b:d:0", "کتاب الف", 10, 40)
+    report(app, bd(app, 0), "کتاب الف", 10, 40)
     assert any("در گروه ارسال نشد" in t for t in bale.texts(ADMIN))      # به مدیر خبر داده می‌شود
     assert app.conn.execute("SELECT posted FROM book_reports").fetchone()["posted"] == 0
     # گروه را مدیر از فهرست انتخاب می‌کند؛ بعد «ارسال مجدد»
@@ -137,7 +163,7 @@ def test_admin_book_tools_and_group_failure():
     go(app, upd(ADMIN, data=f"a:book:gs:{GROUP}"), upd(ADMIN, data="a:book:retry"))
     assert app.conn.execute("SELECT posted FROM book_reports").fetchone()["posted"] == 1
     # گزارش کلی و اکسل
-    report(app, "b:d:2", "کتاب ب", 1, 20)
+    report(app, bd(app, 1), "کتاب ب", 1, 20)
     go(app, upd(ADMIN, data="a:book:sum"))
     t = bale.texts(ADMIN)[-1]
     assert "مهدی نمونه: ۲ گزارش | ۵۱ صفحه | ۲ کتاب" in t and "رضا نمونه: ۰ گزارش" in t and "رتبه" not in t
@@ -277,9 +303,21 @@ def test_broadcast_by_grade_and_reports_filter_by_grade():
     assert any("جلسه‌ی باشگاه" in t for t in bale.texts(STU))
     assert not any("جلسه‌ی باشگاه" in t for t in bale.texts(S6))
     assert "مهدی نمونه" in reports.class_lines(app) and "علی ششمی" in reports.class_lines(app)   # نهمی هم تکلیف دارد
+    # فهرست دانش‌آموزان: اول پوشه‌ی پایه‌ها، بعد فهرست همان پایه
     go(app, upd(ADMIN, data="a:slist:0"))
     labels = [b["text"] for row in bale.out[-1][2] for b in row]
-    assert any("مهدی نمونه (نهم)" in l for l in labels) and any("علی ششمی (ششم)" in l for l in labels)
+    assert any(l.startswith("📁 پایه‌ی نهم (۲ نفر") for l in labels) and any(l.startswith("📁 پایه‌ی ششم (۱ نفر") for l in labels)
+    assert not any("مهدی نمونه" in l for l in labels)                  # نام‌ها فقط داخل پوشه
+    go(app, upd(ADMIN, data="a:sf:9:0"))
+    labels = [b["text"] for row in bale.out[-1][2] for b in row]
+    assert any("مهدی نمونه" in l for l in labels) and any("رضا نمونه" in l for l in labels) and not any("علی ششمی" in l for l in labels)
+    go(app, upd(ADMIN, data="a:sf:6:0"))
+    labels = [b["text"] for row in bale.out[-1][2] for b in row]
+    assert any("علی ششمی" in l for l in labels) and not any("مهدی نمونه" in l for l in labels)
+    # بازگشت از پروفایل به همان پوشه
+    sid6 = app.conn.execute("SELECT id FROM students WHERE full_name='علی ششمی'").fetchone()["id"]
+    go(app, upd(ADMIN, data=f"a:st:{sid6}"))
+    assert any(b["callback_data"] == "a:sf:6:0" for row in bale.out[-1][2] for b in row)
 
 
 def test_polling_pause():
