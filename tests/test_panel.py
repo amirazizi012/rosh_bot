@@ -1,4 +1,4 @@
-"""آزمون پنل وب: ورود با کد یک‌بارمصرف، صفحه‌ها، فقط‌خواندنی‌بودن، امنیت فایل‌ها."""
+"""آزمون پنل وب: ورود با کد یک‌بارمصرف، صفحه‌ها، رد درخواست‌های تغییرِ بیرون از /act، امنیت فایل‌ها."""
 import http.client, os, re, sqlite3, sys, tempfile, threading, time
 from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -150,7 +150,7 @@ def test_panel_books_and_points_pages():
         text = cl.req("GET", f"/student/{sid9}")[2].decode()
         assert "پایه‌ی نهم" in text and "۴۵۱ تا ۴۷۰" in text
         text = cl.req("GET", "/points")[2].decode()
-        assert "تکلیف امتیازی &lt;ویژه&gt;" in text and "فقط‌خواندنی" in text
+        assert "تکلیف امتیازی &lt;ویژه&gt;" in text and "خبردار" in text
         text = cl.req("GET", "/students")[2].decode()
         assert "نهم" in text and "ششم" in text
         text = cl.req("GET", "/")[2].decode()

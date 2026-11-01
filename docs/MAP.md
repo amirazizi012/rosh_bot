@@ -21,6 +21,10 @@ flowchart TD
   admin --> points
   admin --> reports
   admin --> review
+  panel --> actions
+  actions[actions.py<br/>عمل‌های پنل] --> admin
+  actions --> review
+  actions --> points
   review[review.py<br/>بررسی پاسخ توسط مدیر] --> rules
   review --> reports
   review --> core
@@ -63,7 +67,8 @@ flowchart LR
   B[(بله)] <-->|getUpdates / send*| BOT[app.main<br/>بات]
   BOT -->|نوشتن| DB[(data/rosh.db)]
   BOT -->|فایل‌ها| FS[(data/assignments<br/>data/submissions<br/>exports, backups)]
-  PANEL[app.panel<br/>پنل فقط‌خواندنی] -->|mode=ro| DB
+  PANEL[app.panel<br/>پنل وب] -->|خواندن mode=ro| DB
+  PANEL -->|POST /act/* با CSRF · actions.py| DB
   PANEL -->|نشست‌ها| PDB[(data/panel.db)]
   PANEL --> FS
   ADM[مدیر] -->|ورود با کد یک‌بارمصرف از بات| PANEL
@@ -96,12 +101,13 @@ flowchart LR
 | `app/rules.py` | **تنها** جای منطق مهلت/تأخیر/نشان/امتیاز | هیچ import از لایه‌ی UI ندارد؛ آزمون‌پذیر |
 | `app/student.py` | ورود، فهرست تکالیف، آپلود چندعکسه، ویرایش، بازخورد | `_extract` را `admin.py` هم import می‌کند |
 | `app/admin.py` | تمام منوهای مدیر (۱۱۹۱ خط) | بزرگ‌ترین فایل؛ در بخش ۴ نقشه‌ی بخش‌هایش آمده |
+| `app/actions.py` | عمل‌های نوشتنیِ پنل وب (مرحله‌ی ۱) | هر تابع `(ok, پیام)` برمی‌گرداند؛ ADR 0009 |
 | `app/review.py` | بررسی پاسخ توسط مدیر: وضعیت دستی، ناقص، بخشودن تأخیر (ADR 0005) | وضعیت را فقط با `rules.student_status` بخوان |
 | `app/books.py` | باشگاه کتابخوانی پایه‌ی ۹ + بخش مدیر کتابخوانی + ثبت گروه | ارسال به گروه فقط با `book_group_chat_id` |
 | `app/points.py` | صف تأیید امتیاز، تغییر دستی، حذف نشان | کاربر نهایی پایه‌ی ۹/۶ مستقیم امتیاز نمی‌گیرد |
 | `app/reports.py` | اکسل، ZIP پاسخ‌ها (۴۰MB)، آمار و متن کتابخوانی | هم بات هم پنل از آن استفاده می‌کنند |
 | `app/scheduler.py` | یادآوری، پشتیبان روزانه، پاک‌سازی exports | `reminders`, `daily_backup`, `cleanup_exports` |
-| `app/panel.py` | سرور HTTP، ورود با کد، نشست، آستانه‌ی تلاش ناموفق | `open_ro` اتصال فقط‌خواندنی؛ هیچ نوشتنی در `rosh.db` نیست |
+| `app/panel.py` | سرور HTTP، ورود با کد، نشست، آستانه‌ی تلاش ناموفق | خواندن با `open_ro`؛ نوشتن فقط در `do_action` با `open_rw` و `ACTIONS` |
 | `app/panel_ui.py` | HTML فارسی راست‌چین، ارقام فارسی، CSS/JS درون‌خطی | همه‌ی توابع فقط می‌خوانند |
 | `app/bale.py` | `Bale` (httpx)، `btn`, `keyboard`, `BaleError` | |
 | `app/fa.py` / `jalali.py` / `usernames.py` | ارقام فارسی، تاریخ جلالی، نرمال‌سازی یوزرنیم | تاریخ فقط با `jalali.fmt`، رقم فقط با `fa()` |
@@ -219,12 +225,13 @@ flowchart LR
 | `test_flow.py` | جریان کامل مدیر⇄دانش‌آموز با `FakeBale` + `scheduler` + `reports` |
 | `test_books.py` | باشگاه کتابخوانی، گزارش‌ها، ارسال به گروه |
 | `test_login_edit.py` | ورود با یوزرنیم، ویرایش ارسال |
-| `test_panel.py` | ورود پنل، فقط‌خواندنی بودن، صفحه‌ها |
+| `test_panel.py` | ورود پنل، رد درخواست‌های بیرون از `/act`، صفحه‌ها |
+| `test_panel_edit.py` | ویرایش از پنل: CSRF/Origin/مدیر بودن، دانش‌آموز و گروه، وضعیت پاسخ، امتیاز و نشان |
 | `test_review.py` | بررسی مدیر، نشان در انتظار تأیید (ADR 0005) |
 | `test_grade7.py` | پایه‌ی هفتم بدون نشان و امتیاز؛ مخاطب‌یابی؛ مهاجرت تکالیف قدیمی |
 | `test_grade9.py` | نهمی: منوی تکلیف + کتابخوانی، مخاطب «فقط نهم/همه»، بدون نشان و امتیاز، برچسب «تمرین بیشتر»، تأخیر ۴ روزه |
 
-اجرا: `python tests/<نام>.py` (هر فایل مستقل است). وضعیت فعلی: ۸ از ۸ سبز.
+اجرا: `python tests/<نام>.py` (هر فایل مستقل است). وضعیت فعلی: ۹ از ۹ سبز.
 
 ### شکاف‌ها (به ترتیب ریسک)
 1. هیچ آزمونی با بله‌ی **واقعی** نیست (`FakeBale`): دکمه‌ها، دریافت فایل، `from.username`، `/setgroup`.
@@ -248,13 +255,17 @@ flowchart LR
 **پایه‌ی ۹ علاوه بر آن** (`books.py`): باشگاه کتابخوانی — یکی از سه بخش روز هفته‌ی ایرانی (شنبه‌یکشنبه | دوشنبه‌سه‌شنبه | چهارشنبه‌تا‌جمعه، تا یک هفته بعد از پایان)، کتاب، از/تا صفحه، پیش‌نمایش، ثبت و ارسال خودکار به گروه بله، گزارش‌های من.
 **مدیر** (`admin.py`, `review.py`, `points.py`, `books.py`): ساخت/ویرایش/لغو تکلیف (الزامی، **تمرین بیشتر**، امتیازی) برای همه‌ی پایه‌ها یا یک پایه یا گروه، تمدید مهلت، معافیت، ارسال مجدد، بررسی پاسخ و وضعیت دستی، دانش‌آموزان و گروه‌ها، اعلان همگانی، بازخورد، گزارش/اکسل/ZIP، تأیید نشان و امتیاز (ششم)، گزارش کتابخوانی، `/setgroup`.
 **خودکار** (`scheduler.py`, `rules.py`): یادآوری، پشتیبان روزانه، پاک‌سازی exports، ارفاق ۲۰ دقیقه، ارسال با تأخیر تا ۹۶ ساعت (تکالیف جدید)، نشان پشتکار و کوشا با تأیید مدیر.
-**پنل وب فقط‌خواندنی**: داشبورد، دانش‌آموزان، تکالیف، نشان‌ها، بازخورد، امتیاز، کتابخوانی، لاگ، اکسل؛ صفحه‌ی نهمی هم تکالیف و هم کتابخوانی را نشان می‌دهد.
+**پنل وب** (مشاهده + ویرایش مرحله‌ی ۱ طبق `docs/PANEL_EDIT.md`): داشبورد، دانش‌آموزان، تکالیف، نشان‌ها، بازخورد، امتیاز، کتابخوانی، لاگ، اکسل؛ صفحه‌ی نهمی هم تکالیف و هم کتابخوانی را نشان می‌دهد.
 
 > ارتباط با کارنامه و آزمون تستی هنوز در ریپو نیست (README آن را «فاز بعد» می‌نامد).
 
 ## ۱۱. فهرست توابع هر ماژول (خودکار از `docs/graph.json`)
 
 > برای جست‌وجوی سریع «تابع کجاست». بعد از `python scripts/map.py` این بخش را بازسازی کن.
+
+**`app/actions.py`** (226 خط) — کلاس‌ها: PanelApp
+
+`_ctx`, `add_students`, `_student`, `rename_student`, `set_username`, `toggle_active`, `reset_login`, `set_student_groups`, `create_group`, `delete_group`, `set_group_members`, `set_status`, `approve_item`, `reject_item`, `approve_all`, `adjust_points`, `delete_badge`
 
 **`app/admin.py`** (1270 خط)
 
@@ -292,13 +303,13 @@ flowchart LR
 
 `needs_pause`, `start_panel`, `run`
 
-**`app/panel.py`** (427 خط) — کلاس‌ها: Store, PanelServer, Handler
+**`app/panel.py`** (532 خط) — کلاس‌ها: Store, PanelServer, Handler
 
-`open_ro`, `code_hash`, `make_server`, `run`
+`open_ro`, `open_rw`, `csrf_token`, `code_hash`, `make_server`, `run`
 
-**`app/panel_ui.py`** (506 خط)
+**`app/panel_ui.py`** (598 خط)
 
-`esc`, `has_logo`, `_fa_node`, `persian_digits`, `layout`, `login_page`, `chip`, `stat_bar`, `progress`, `table`, `link`, `students_active`, `groups_of`, `tally`, `files_html`, `dashboard`, `_uname`, `students_page`, `student_page`, `assignments_page`, `assignment_page`, `badges_page`, `feedback_page`, `audit_page`, `not_found`, `_pair`, `_book_section`, `student_book_page`, `books_page`, `points_page`
+`esc`, `form`, `hid`, `status_form`, `has_logo`, `_fa_node`, `persian_digits`, `layout`, `login_page`, `chip`, `stat_bar`, `progress`, `table`, `link`, `students_active`, `groups_of`, `tally`, `files_html`, `dashboard`, `_uname`, `students_page`, `student_page`, `assignments_page`, `assignment_page`, `badges_page`, `feedback_page`, `audit_page`, `groups_page`, `group_page`, `not_found`, `_pair`, `_book_section`, `student_book_page`, `books_page`, `points_page`
 
 **`app/points.py`** (209 خط)
 

@@ -31,11 +31,12 @@ python tests/test_login_edit.py
 python tests/test_review.py
 python tests/test_grade7.py
 python tests/test_grade9.py
+python tests/test_panel_edit.py
 ```
 اگر آزمونی شکست خورد، علتش را پیدا کن؛ آزمون را فقط برای تغییر رفتار عمدی تغییر بده.
 
 ## محدودیت‌ها که نباید نقض شوند
-- پنل وب فقط‌خواندنی است: هیچ `POST`ی که داده را تغییر دهد اضافه نکن.
+- پنل وب: خواندن با `mode=ro`؛ تغییر فقط از `POST /act/<نام>` (جدول `panel.ACTIONS`) و با تابعی در `app/actions.py` (نه منطق داخل `panel.py`). هر فرم باید `{{CSRF}}` داشته باشد؛ هیچ `POST` دیگری یا تغییر در `GET` اضافه نکن (ADR 0009).
 - یک نمونه‌ی بات (Replica=۱): وضعیت در SQLite محلی است.
 - کاربران نوجوان (۱۲ تا ۱۵ سال): داده‌ی بیشتر از لازم ذخیره نکن و پیام‌های حساس نفرست.
 - ارسال به گروه فقط با `book_group_chat_id` تنظیم‌شده.

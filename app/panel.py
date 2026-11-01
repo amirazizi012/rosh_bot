@@ -1,7 +1,8 @@
-"""پنل وب فقط‌خواندنی «رشد»  —  اجرا: python -m app.panel
+"""پنل وب «رشد»  —  اجرا: python -m app.panel
 
 اصول طراحی
-• فرایند جدا از بات است و دیتابیس اصلی را فقط‌خواندنی باز می‌کند (mode=ro / query_only)؛ پس حتی با باگ هم چیزی را عوض نمی‌کند.
+• خواندن: دیتابیس اصلی با mode=ro / query_only باز می‌شود. تغییر: فقط از POST /act/<نام> (ADR 0009) با اتصال نوشتنی کوتاه‌عمر،
+  نشست معتبر، مدیر بودن، توکن CSRF و بررسی Origin؛ منطق تغییر در app/actions.py است.
 • ورود: مدیر در بات «🌐 ورود به پنل وب» را می‌زند و یک کد ۸ رقمی یک‌بارمصرف (۵ دقیقه) می‌گیرد؛ رمز عبور نداریم.
 • نشست‌ها و کدهای مصرف‌شده در یک فایل جدا (panel.db) نگه داشته می‌شوند، نه در دیتابیس اصلی.
 """
@@ -21,11 +22,12 @@ from contextlib import closing
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, quote, urlparse
+from urllib.parse import parse_qs, quote, urlencode, urlparse
 
-from . import config, panel_ui as UI, reports
+from . import actions, config, panel_ui as UI, reports
 from . import jalali as J
 from .fa import en
+from .bale import Bale
 
 log = logging.getLogger("rosh.panel")
 
@@ -101,6 +103,19 @@ class Store:
                 c.commit()
 
 
+def open_rw(cfg) -> sqlite3.Connection:
+    """اتصال نوشتنیِ کوتاه‌عمر؛ فقط برای عمل‌های POST (بات هم هم‌زمان می‌نویسد؛ WAL و timeout)."""
+    conn = sqlite3.connect(str((Path(cfg.data_dir) / "rosh.db").resolve()), timeout=10)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=10000")
+    return conn
+
+
+def csrf_token(cfg, session_token: str) -> str:
+    """توکن CSRF مخصوص هر نشست (از کوکی نشست و توکن بات ساخته می‌شود؛ جاسازی در صفحه برای همان نشست است)."""
+    return hmac.new(cfg.token.encode(), b"csrf:" + session_token.encode(), hashlib.sha256).hexdigest()[:40]
+
+
 def code_hash(cfg, code: str) -> str:
     return hmac.new(cfg.token.encode(), code.encode(), hashlib.sha256).hexdigest()
 
@@ -115,8 +130,15 @@ class PanelServer(ThreadingHTTPServer):
         self.store = Store(Path(cfg.data_dir) / "panel.db")
         self.fails: dict = {}
         self.lock = threading.Lock()
+        self._bale = None
         self.assets = Path(__file__).resolve().parent.parent / "assets"
         self.logo = (self.assets / "logo.png").exists()
+
+    def bale(self):
+        """مشتری بله برای اطلاع‌رسانی به دانش‌آموز بعد از هر عمل (در آزمون جایگزین می‌شود)."""
+        if self._bale is None:
+            self._bale = Bale(self.cfg.token, self.cfg.api_base)
+        return self._bale
 
     # محدودیت تلاش ورود به‌ازای IP
     def too_many(self, ip: str, now: int) -> bool:
@@ -166,6 +188,11 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header(k, v)
 
     def html(self, body: str, status=200, extra=None):
+        csrf = getattr(self, "_csrf", "")
+        if "{{CSRF}}" in body:
+            body = body.replace("{{CSRF}}", csrf)
+        if "<!--FLASH-->" in body:
+            body = body.replace("<!--FLASH-->", getattr(self, "_flash", ""))
         data = body.encode("utf-8")
         h = {"Cache-Control": "no-store"}
         h.update(extra or {})
@@ -248,15 +275,24 @@ class Handler(BaseHTTPRequestHandler):
         admin_id = srv.store.session_admin(self.cookie(), now)
         if not admin_id:
             return self.redirect("/login")
+        self._csrf = csrf_token(srv.cfg, self.cookie())
+        if method == "POST":
+            if path.startswith("/act/"):
+                return self.do_action(path[len("/act/"):], admin_id, now)
+            return self.html(UI.not_found(srv.logo), 405)
         if method != "GET":
-            return self.html(UI.not_found(srv.logo), 405)  # پنل فقط‌خواندنی است
+            return self.html(UI.not_found(srv.logo), 405)
+        q = parse_qs(u.query)
+        if q.get("m"):
+            kind = "ok" if q.get("k", [""])[0] == "ok" else "err"
+            self._flash = f'<div class="flash {kind}">{UI.esc(q["m"][0][:300])}</div>'
 
         cfg = srv.cfg
         logo = srv.logo
         with closing(open_ro(cfg)) as conn:
             pages = {"/": UI.dashboard, "/students": UI.students_page, "/assignments": UI.assignments_page,
                      "/badges": UI.badges_page, "/feedback": UI.feedback_page, "/audit": UI.audit_page,
-                     "/points": UI.points_page}
+                     "/points": UI.points_page, "/groups": UI.groups_page}
             days = self._days(u.query)
             if path == "/books":
                 return self.html(UI.books_page(conn, cfg, now, days, logo=logo))
@@ -269,6 +305,9 @@ class Handler(BaseHTTPRequestHandler):
                 kind, ident = seg[0], int(seg[1])
                 if kind == "student":
                     page = UI.student_page(conn, cfg, now, ident, logo=logo)
+                    return self.html(page) if page else self.html(UI.not_found(logo), 404)
+                if kind == "group":
+                    page = UI.group_page(conn, cfg, now, ident, logo=logo)
                     return self.html(page) if page else self.html(UI.not_found(logo), 404)
                 if kind == "assignment":
                     page = UI.assignment_page(conn, cfg, now, ident, logo=logo)
@@ -332,6 +371,52 @@ class Handler(BaseHTTPRequestHandler):
             return self.html(UI.login_page("کد درست نیست یا منقضی شده است. از بات کد تازه بگیر.", srv.logo), 401)
         token = srv.store.new_session(admin_id, now)
         return self.redirect("/", self.set_cookie(token, SESSION_TTL))
+
+    # --- عمل‌های تغییر (ADR 0009)
+    def _flash_redirect(self, back: str, ok: bool, msg: str):
+        back = back if (back.startswith("/") and not back.startswith("//") and "\\" not in back and "\n" not in back) else "/"
+        base, _, _ = back.partition("?")
+        return self.redirect(f"{base}?" + urlencode({"m": msg, "k": "ok" if ok else "err"}))
+
+    def _origin_ok(self) -> bool:
+        origin = self.headers.get("Origin")
+        if not origin:
+            return True                       # مرورگرها در POST هم‌مبدأ Origin می‌فرستند؛ نبودنش با CSRF و SameSite پوشش داده می‌شود
+        host = self.headers.get("Host", "")
+        if self.server.cfg.panel_trust_proxy and self.headers.get("X-Forwarded-Host"):
+            host = self.headers["X-Forwarded-Host"].split(",")[0].strip()
+        return urlparse(origin).netloc == host
+
+    def do_action(self, name: str, admin_id: int, now: int):
+        srv: PanelServer = self.server
+        try:
+            n = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            n = 0
+        if n > 65536:
+            return self.html(UI.not_found(srv.logo), 413)
+        form = parse_qs(self.rfile.read(n).decode("utf-8", "ignore"), keep_blank_values=True)
+        one = lambda k, d="": (form.get(k, [d])[0] if form.get(k) else d)  # noqa: E731
+        back = one("back", "/")
+        if not self._origin_ok() or not hmac.compare_digest(one("_csrf"), self._csrf):
+            return self._flash_redirect(back, False, "نشست یا فرم معتبر نیست؛ صفحه را دوباره باز کن.")
+        fn = ACTIONS.get(name)
+        if fn is None:
+            return self.html(UI.not_found(srv.logo), 404)
+        conn = open_rw(srv.cfg)
+        try:
+            app = actions.PanelApp(srv.cfg, srv.bale(), conn)
+            if not app.is_admin(admin_id):
+                return self._flash_redirect(back, False, "دسترسی مدیر برای این نشست دیگر فعال نیست.")
+            ints = lambda k: [int(x) for x in form.get(k, []) if x.isdigit()]  # noqa: E731
+            toint = lambda k: int(one(k)) if one(k).isdigit() else 0  # noqa: E731
+            ok, msg = fn(app, admin_id, one, toint, ints)
+        except Exception:
+            log.exception("خطا در عمل پنل: %s", name)
+            ok, msg = False, "خطای غیرمنتظره؛ دوباره امتحان کن."
+        finally:
+            conn.close()
+        return self._flash_redirect(back, ok, msg)
 
     # --- فایل‌ها
     def static(self, name: str):
@@ -402,6 +487,26 @@ class Handler(BaseHTTPRequestHandler):
                        {"Content-Disposition": "attachment; filename=\"rosh-report.xlsx\""}, delete_after=True)
 
 
+# نام عمل → تابع (app، admin_id، one، toint، ints) ← (ok، پیام)
+ACTIONS = {
+    "students_add": lambda a, m, one, i, ints: actions.add_students(a, m, one("text"), i("grade")),
+    "student_rename": lambda a, m, one, i, ints: actions.rename_student(a, m, i("sid"), one("name")),
+    "student_username": lambda a, m, one, i, ints: actions.set_username(a, m, i("sid"), one("username")),
+    "student_toggle": lambda a, m, one, i, ints: actions.toggle_active(a, m, i("sid")),
+    "student_reset": lambda a, m, one, i, ints: actions.reset_login(a, m, i("sid")),
+    "student_groups": lambda a, m, one, i, ints: actions.set_student_groups(a, m, i("sid"), ints("groups")),
+    "group_create": lambda a, m, one, i, ints: actions.create_group(a, m, one("name")),
+    "group_delete": lambda a, m, one, i, ints: actions.delete_group(a, m, i("gid"), one("confirm") == "1"),
+    "group_members": lambda a, m, one, i, ints: actions.set_group_members(a, m, i("gid"), ints("students")),
+    "status": lambda a, m, one, i, ints: actions.set_status(a, m, i("aid"), i("sid"), one("code"), one("note")),
+    "item_ok": lambda a, m, one, i, ints: actions.approve_item(a, m, one("kind"), i("id")),
+    "item_no": lambda a, m, one, i, ints: actions.reject_item(a, m, one("kind"), i("id")),
+    "items_all": lambda a, m, one, i, ints: actions.approve_all(a, m),
+    "points_adjust": lambda a, m, one, i, ints: actions.adjust_points(a, m, i("sid"), one("delta"), one("reason")),
+    "badge_delete": lambda a, m, one, i, ints: actions.delete_badge(a, m, i("bid")),
+}
+
+
 def make_server(cfg, host=None, port=None) -> PanelServer:
     return PanelServer(cfg, (host or cfg.panel_host, cfg.panel_port if port is None else port))
 
@@ -415,7 +520,7 @@ def run():
     where = cfg.panel_url or f"http://localhost:{cfg.panel_port}"
     if cfg.panel_host not in ("127.0.0.1", "localhost", "::1"):
         log.warning("پنل روی %s گوش می‌دهد؛ حتماً پشت HTTPS (Caddy/Nginx) سرو شود.", cfg.panel_host)
-    log.info("پنل وب «رشد» آماده است: %s  (فقط‌خواندنی)", where)
+    log.info("پنل وب «رشد» آماده است: %s", where)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

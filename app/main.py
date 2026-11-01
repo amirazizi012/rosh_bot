@@ -24,7 +24,7 @@ def start_panel(cfg):
         from . import panel
         srv = panel.make_server(cfg)
         threading.Thread(target=srv.serve_forever, daemon=True, name="panel").start()
-        log.info("پنل وب (فقط‌خواندنی) روی %s:%s فعال شد", cfg.panel_host, srv.server_address[1])
+        log.info("پنل وب روی %s:%s فعال شد", cfg.panel_host, srv.server_address[1])
         return srv
     except Exception:
         log.exception("راه‌اندازی پنل وب ناموفق بود؛ بات بدون پنل ادامه می‌دهد")

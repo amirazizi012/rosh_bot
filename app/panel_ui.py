@@ -1,4 +1,4 @@
-"""صفحه‌های پنل وب فقط‌خواندنی: همه‌ی متن‌ها فارسی، راست‌چین و با ارقام فارسی.
+"""صفحه‌های پنل وب: همه‌ی متن‌ها فارسی، راست‌چین و با ارقام فارسی.
 هیچ تابعی در این فایل چیزی در دیتابیس نمی‌نویسد."""
 from __future__ import annotations
 
@@ -77,6 +77,15 @@ tr:last-child td{border-bottom:0}tbody tr:hover{background:#fafcf9}
 .err{background:var(--msb);color:var(--ms);border-radius:10px;padding:8px;margin:8px 0}
 .two{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(340px,1fr))}
 .row{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px dashed var(--line)}.row:last-child{border:0}
+form.f{display:inline-block;margin:2px 0}form.f.blk{display:block}
+form.f input[type=text],form.f input:not([type]),form.f select,form.f textarea{padding:6px 10px;border:1px solid var(--line);border-radius:9px;font:inherit;background:#fff;max-width:100%}
+form.f textarea{width:100%;min-height:90px}
+button.b{background:var(--g);color:#fff;border:0;border-radius:9px;padding:6px 14px;font:inherit;font-weight:700;cursor:pointer}
+button.b:hover{background:var(--gd)}button.b.warn{background:#c0392b}button.b.ghost{background:#fff;color:var(--gd);border:1px solid var(--g)}
+.flash{border-radius:12px;padding:10px 14px;margin:0 0 14px}.flash.ok{background:var(--okb);color:var(--ok)}.flash.err{background:var(--msb);color:var(--ms)}
+details.mng{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:8px 16px;margin:12px 0}
+details.mng summary{cursor:pointer;font-weight:700;color:var(--gd)}
+.chk{display:flex;flex-wrap:wrap;gap:6px 16px;margin:8px 0}.chk label{white-space:nowrap}
 @media(max-width:640px){.bar-in{flex-wrap:wrap}nav{order:3;flex-basis:100%}.kbar{width:90px}.grid{grid-template-columns:repeat(2,1fr)}main{margin-top:14px}}
 @media print{header.top,.search,form.logout,.btn{display:none}body{background:#fff}}
 """
@@ -88,10 +97,35 @@ document.addEventListener('input',function(e){
   if(!tb) return;
   tb.querySelectorAll('tbody tr').forEach(function(r){r.style.display=(r.textContent.indexOf(q)>-1)?'':'none';});
 });
+document.addEventListener('submit',function(e){
+  var m=e.target.getAttribute('data-confirm');
+  if(m && !window.confirm(m)) e.preventDefault();
+});
 """
 
-NAV = [("/", "داشبورد"), ("/students", "دانش‌آموزان"), ("/assignments", "تکالیف"), ("/points", "امتیازها"),
+NAV = [("/", "داشبورد"), ("/students", "دانش‌آموزان"), ("/assignments", "تکالیف"), ("/groups", "گروه‌ها"), ("/points", "امتیازها"),
        ("/badges", "نشان‌ها"), ("/books", "باشگاه کتابخوانی"), ("/feedback", "بازخوردها"), ("/audit", "فعالیت مدیران")]
+
+
+def form(action: str, inner: str, back: str, label: str, cls: str = "", confirm: str = "", block: bool = False) -> str:
+    """فرم تغییر؛ `{{CSRF}}` هنگام ارسال با توکن نشست جایگزین می‌شود. back = نشانیِ برگشت (فقط مسیر داخلی)."""
+    conf = f' data-confirm="{esc(confirm)}"' if confirm else ""
+    return (f'<form class="f{" blk" if block else ""}" method="post" action="/act/{action}"{conf}>'
+            f'<input type="hidden" name="_csrf" value="{{{{CSRF}}}}"><input type="hidden" name="back" value="{esc(back)}">'
+            f'{inner}<button class="b {cls}">{esc(label)}</button></form>')
+
+
+def hid(**kw) -> str:
+    return "".join(f'<input type="hidden" name="{k}" value="{esc(v)}">' for k, v in kw.items())
+
+
+STATUS_OPTS = [("ok", "✅ به‌موقع"), ("late", "⏰ با تاخیر"), ("inc", "⚠️ ناقص"), ("miss", "❌ ارسال‌نشده"), ("auto", "↩ خودکار")]
+
+
+def status_form(aid: int, sid: int, back: str) -> str:
+    opts = "".join(f'<option value="{k}">{esc(t)}</option>' for k, t in STATUS_OPTS)
+    return form("status", hid(aid=aid, sid=sid) + f'<select name="code">{opts}</select> <input name="note" placeholder="توضیح (برای ناقص)" size="14">',
+                back, "ثبت", "ghost")
 
 
 def has_logo(data_dir: Path) -> bool:
@@ -121,14 +155,14 @@ def layout(title: str, body: str, active: str = "", logged: bool = True, logo: b
             f'<meta name="robots" content="noindex,nofollow"><title>{esc(fa(title))} — پنل رشد</title>'
             f'<style>{CSS}</style></head><body>'
             f'<header class="top"><div class="bar-in"><a class="brand" href="/">{img}<span>مجموعه تربیتی، آموزشی رشد</span></a>'
-            f'<nav>{links}</nav>{out}</div></header><main>{persian_digits(body)}</main>'
+            f'<nav>{links}</nav>{out}</div></header><main><!--FLASH-->{persian_digits(body)}</main>'
             f'<script src="/static/panel.js"></script></body></html>')
 
 
 def login_page(error: str = "", logo: bool = False) -> str:
     err = f'<div class="err">{esc(error)}</div>' if error else ""
     body = ('<div class="login card"><h1>ورود به پنل رشد</h1>'
-            '<p class="sub">این پنل فقط برای مشاهده است و هیچ چیزی را تغییر نمی‌دهد.</p>'
+            '<p class="sub">با کد یک‌بارمصرفی که بات می‌دهد وارد شو.</p>'
             f'{err}<form method="post" action="/login">'
             '<input name="code" inputmode="numeric" autocomplete="off" maxlength="12" placeholder="کد ۸ رقمی" autofocus>'
             '<button>ورود</button></form>'
@@ -261,7 +295,7 @@ def dashboard(conn, cfg, now, logo=False) -> str:
 
     body = (f'<h1>داشبورد</h1><p class="sub">وضعیت امروز — {esc(J.fmt(now))}</p><div class="grid">{cards}</div>'
             f'<div class="two"><div><h2>مهلت‌های پیش‌رو</h2>{up_html}</div><div><h2>نیازمند پیگیری</h2>{need_html}</div></div>'
-            f'<h2>وضعیت دانش‌آموزان پایه‌ی ششم و هفتم (تکالیف الزامی)</h2>{main_tbl}<h2>آخرین ارسال‌ها</h2>{rec_html}'
+            f'<h2>وضعیت دانش‌آموزان (تکالیف الزامی)</h2>{main_tbl}<h2>آخرین ارسال‌ها</h2>{rec_html}'
             f'<p class="muted" style="margin-top:18px"><a class="btn ghost" href="/export.xlsx">📗 دریافت اکسل کامل</a></p>')
     return layout("داشبورد", body, "/", logo=logo)
 
@@ -281,7 +315,12 @@ def students_page(conn, cfg, now, logo=False) -> str:
         rows.append([link(f"/student/{s['id']}", s["full_name"]) + _uname(s), esc(grade), groups_of(conn, s["id"]), esc(f"{state} | {joined}"),
                      stat_bar(t), f'{fa(t["on_time"])} / {fa(t["late"])} / {fa(t["missed"])} / {fa(t["excused"])}' + (f' <span class="chip inc">ناقص {fa(t["incomplete"])}</span>' if t["incomplete"] else ""),
                      f'{fa(t["badges"])} نشان | {fa(t["points"])} امتیاز' if s["grade"] in R.GAMIFIED_GRADES else "—"])
-    body = ('<h1>دانش‌آموزان</h1><p class="sub">برای دیدن گزارش کامل هر نفر روی نامش بزن.</p>'
+    grade_opts = "".join(f'<option value="{g}">{esc(nm)}</option>' for g, nm in sorted(R.GRADE_NAME.items()))
+    add = ('<details class="mng"><summary>➕ افزودن دانش‌آموز</summary>' +
+           form("students_add", f'<p class="muted">هر خط یک نفر: <b>نام | @یوزرنیم بله | گروه</b> (یوزرنیم و گروه اختیاری؛ حداکثر ۶۰ نفر)</p>'
+                f'<textarea name="text" placeholder="علی رضایی | @ali_01"></textarea><br>پایه: <select name="grade">{grade_opts}</select> ',
+                "/students", "افزودن", block=True) + '</details>')
+    body = ('<h1>دانش‌آموزان</h1><p class="sub">برای دیدن گزارش کامل هر نفر روی نامش بزن.</p>' + add +
             '<input class="search" data-table="t-st" placeholder="جست‌وجوی نام یا گروه…">' +
             table(["نام", "پایه", "گروه", "وضعیت", "توزیع", "به‌موقع / تاخیر / ارسال‌نشده / عذر", "نشان و امتیاز"], rows, "t-st"))
     return layout("دانش‌آموزان", body, "/students", logo=logo)
@@ -307,10 +346,11 @@ def student_page(conn, cfg, now, sid: int, logo=False):
                          f'<span class="nowrap">{esc(J.fmt_short(R.effective_deadline(conn, a, sid)))}</span>',
                          chip(st["code"], st["over"], bool(st.get("override"))),
                          f'<span class="nowrap">{esc(J.fmt_short(sub["submitted_ts"]))}</span>' if sub else "—",
-                         files_html(conn, sub)])
-    asg_html = table(["نوع", "تکلیف", "مهلت", "وضعیت", "زمان ارسال", "فایل‌ها"], asg_rows) if asg_rows else '<div class="card muted">تکلیفی برای این دانش‌آموز نیست.</div>'
-    badges = conn.execute("SELECT title, awarded_ts, status FROM badges WHERE student_id=? ORDER BY awarded_ts DESC", (sid,)).fetchall()
-    b_html = "".join(f'<div class="row"><span>{esc(b["title"])}{" <span class=\"chip wait\">در انتظار تأیید</span>" if b["status"] == "pending" else ""}</span><span class="muted nowrap">{esc(J.fmt_short(b["awarded_ts"]))}</span></div>' for b in badges) or '<span class="muted">هنوز نشانی نگرفته است.</span>'
+                         files_html(conn, sub), status_form(a["id"], sid, f"/student/{sid}")])
+    asg_html = table(["نوع", "تکلیف", "مهلت", "وضعیت", "زمان ارسال", "فایل‌ها", "ویرایش وضعیت"], asg_rows) if asg_rows else '<div class="card muted">تکلیفی برای این دانش‌آموز نیست.</div>'
+    badges = conn.execute("SELECT id, title, awarded_ts, status FROM badges WHERE student_id=? ORDER BY awarded_ts DESC", (sid,)).fetchall()
+    b_html = "".join(f'<div class="row"><span>{esc(b["title"])}{" <span class=\"chip wait\">در انتظار تأیید</span>" if b["status"] == "pending" else ""}</span><span class="muted nowrap">{esc(J.fmt_short(b["awarded_ts"]))} ' +
+                     form("badge_delete", hid(bid=b["id"], sid=sid), f"/student/{sid}", "🗑 حذف", "warn", "این نشان حذف شود؟") + '</span></div>' for b in badges) or '<span class="muted">هنوز نشانی نگرفته است.</span>'
     fbs = conn.execute("SELECT f.*, a.title FROM feedback f LEFT JOIN assignments a ON a.id=f.assignment_id WHERE f.student_id=? ORDER BY f.ts DESC LIMIT 20", (sid,)).fetchall()
     f_html = "".join(f'<div class="row"><span>{esc(f["text"])}' + (f' <span class="muted">({esc(f["title"])})</span>' if f["title"] else "") +
                      f'</span><span class="muted nowrap">{esc(J.fmt_short(f["ts"]))}</span></div>' for f in fbs) or '<span class="muted">بازخوردی ثبت نشده است.</span>'
@@ -322,14 +362,30 @@ def student_page(conn, cfg, now, sid: int, logo=False):
     state = "" if s["active"] else ' <span class="chip exc">غیرفعال</span>'
     streak_html = (f'<h2>مسیر نشان بعدی</h2><div class="card">{progress(t["current"], n)}<p class="muted" style="margin:6px 0 0">'
                    f'{fa(t["current"])} از {fa(n)} تکلیف الزامی پشت‌سرهم و به‌موقع</p></div>') if gam else ""
-    ledger_html = f'<h2>دفتر امتیاز</h2>{l_html}' if gam else ""
+    ledger_html = (f'<h2>دفتر امتیاز</h2>{l_html}' + form(
+        "points_adjust", hid(sid=sid) + '<input name="delta" size="5" placeholder="+5 یا -3"> <input name="reason" size="26" placeholder="دلیل">',
+        f"/student/{sid}", "ثبت تغییر دستی امتیاز", block=True)) if gam else ""
     bottom = (f'<div class="two"><div><h2>نشان‌ها</h2><div class="card">{b_html}</div></div>'
               f'<div><h2>بازخوردها</h2><div class="card">{f_html}</div></div></div>') if gam else \
         f'<h2>بازخوردها</h2><div class="card">{f_html}</div>'
     book_html = _book_section(conn, s) if s["grade"] == 9 else ""
+    all_groups = conn.execute("SELECT * FROM groups ORDER BY name").fetchall()
+    mine = {r["group_id"] for r in conn.execute("SELECT group_id FROM student_groups WHERE student_id=?", (sid,))}
+    g_inner = hid(sid=sid) + '<div class="chk">' + "".join(
+        f'<label><input type="checkbox" name="groups" value="{g["id"]}"{" checked" if g["id"] in mine else ""}> {esc(g["name"])}</label>'
+        for g in all_groups) + "</div>" if all_groups else ""
+    manage = ('<details class="mng"><summary>✏ مدیریت دانش‌آموز</summary>' +
+              form("student_rename", hid(sid=sid) + f'<input name="name" value="{esc(s["full_name"])}" size="24"> ', f"/student/{sid}", "تغییر نام") + "<br>" +
+              form("student_username", hid(sid=sid) + f'<input name="username" value="{esc(s["username"] or "")}" size="20" dir="ltr" placeholder="@username (خالی = پاک)"> ',
+                   f"/student/{sid}", "ثبت یوزرنیم") + "<br>" +
+              form("student_toggle", hid(sid=sid), f"/student/{sid}", "⏸ غیرفعال‌سازی" if s["active"] else "▶ فعال‌سازی", "ghost") + " " +
+              form("student_reset", hid(sid=sid), f"/student/{sid}", "🔓 بازنشانی ورود", "ghost",
+                   "ورود دانش‌آموز بازنشانی شود؟ باید دوباره /start بزند.") +
+              (("<br>" + form("student_groups", g_inner, f"/student/{sid}", "ذخیره‌ی گروه‌ها", block=True)) if all_groups else
+               '<p class="muted">هنوز گروهی نساخته‌ای؛ از صفحه‌ی «گروه‌ها» بساز.</p>') + '</details>')
     body = (f'<p><a href="/students">← همه‌ی دانش‌آموزان</a></p><h1>{esc(s["full_name"])}{state}</h1>'
             f'<p class="sub">پایه‌ی {esc(R.GRADE_NAME.get(s["grade"], ""))} | گروه‌ها: {groups_of(conn, sid)}</p><div class="grid">{chips}</div>'
-            f'{streak_html}<h2>تکالیف</h2>{asg_html}{ledger_html}{bottom}{book_html}'
+            f'{manage}{streak_html}<h2>تکالیف</h2>{asg_html}{ledger_html}{bottom}{book_html}'
             f'<p style="margin-top:16px"><a class="btn ghost" href="/zip-student/{sid}">📥 دانلود همه‌ی پاسخ‌های او (ZIP)</a></p>')
     return layout(s["full_name"], body, "/students", logo=logo)
 
@@ -365,7 +421,8 @@ def assignment_page(conn, cfg, now, aid: int, logo=False):
         for s, st in c[key]:
             sub = st["sub"]
             rows.append([link(f"/student/{s['id']}", s["full_name"]), chip(st["code"], st["over"], bool(st.get("override"))),
-                         f'<span class="nowrap">{esc(J.fmt_short(sub["submitted_ts"]))}</span>' if sub else "—", files_html(conn, sub)])
+                         f'<span class="nowrap">{esc(J.fmt_short(sub["submitted_ts"]))}</span>' if sub else "—", files_html(conn, sub),
+                         status_form(aid, s["id"], f"/assignment/{aid}")])
     tgt = TARGET_LABEL.get(a["target_grade"], "همه‌ی دانش‌آموزان") if a["target_all"] else "گروه: " + (" ، ".join(r["name"] for r in conn.execute(
         "SELECT g.name FROM groups g JOIN assignment_groups ag ON ag.group_id=g.id WHERE ag.assignment_id=?", (aid,))) or "—")
     atts = conn.execute("SELECT * FROM assignment_files WHERE assignment_id=? ORDER BY id", (aid,)).fetchall()
@@ -383,7 +440,7 @@ def assignment_page(conn, cfg, now, aid: int, logo=False):
             f'<div class="grid" style="margin-top:12px">{cards}</div>{att_html}'
             f'<h2>وضعیت دانش‌آموزان ({fa(total)} نفر)</h2>'
             f'<input class="search" data-table="t-as" placeholder="جست‌وجوی نام…">' +
-            table(["دانش‌آموز", "وضعیت", "زمان ارسال", "پاسخ"], rows, "t-as") +
+            table(["دانش‌آموز", "وضعیت", "زمان ارسال", "پاسخ", "ویرایش وضعیت"], rows, "t-as") +
             f'<p style="margin-top:16px"><a class="btn ghost" href="/zip/{aid}">📥 دانلود همه‌ی پاسخ‌ها (ZIP)</a></p>')
     return layout(a["title"], body, "/assignments", logo=logo)
 
@@ -417,6 +474,36 @@ def audit_page(conn, cfg, now, logo=False) -> str:
     body = ('<h1>گزارش فعالیت مدیران</h1><p class="sub">۲۰۰ کار آخر؛ برای ردگیری و اطمینان، نه برای محدودکردن.</p>' +
             (table(["زمان", "شناسه‌ی مدیر", "کار", "جزئیات"], rows) if rows else '<div class="card muted">فعالیتی ثبت نشده است.</div>'))
     return layout("گزارش فعالیت", body, "/audit", logo=logo)
+
+
+def groups_page(conn, cfg, now, logo=False) -> str:
+    rows = []
+    for g in conn.execute("SELECT * FROM groups ORDER BY name").fetchall():
+        n = conn.execute("SELECT COUNT(*) c FROM student_groups WHERE group_id=?", (g["id"],)).fetchone()["c"]
+        rows.append([link(f"/group/{g['id']}", g["name"]), fa(n)])
+    add = ('<details class="mng" open><summary>➕ گروه تازه</summary>' +
+           form("group_create", '<input name="name" size="24" placeholder="نام گروه"> ', "/groups", "ساخت") + '</details>')
+    tbl = table(["گروه", "تعداد اعضا"], rows) if rows else '<div class="card muted">هنوز گروهی نیست.</div>'
+    return layout("گروه‌ها", f'<h1>گروه‌ها</h1><p class="sub">گروه‌ها برای تکلیف و پیام ویژه‌ی چند نفر هستند.</p>{add}{tbl}', "/groups", logo=logo)
+
+
+def group_page(conn, cfg, now, gid: int, logo=False):
+    g = conn.execute("SELECT * FROM groups WHERE id=?", (gid,)).fetchone()
+    if not g:
+        return None
+    mine = {r["student_id"] for r in conn.execute("SELECT student_id FROM student_groups WHERE group_id=?", (gid,))}
+    studs = conn.execute("SELECT * FROM students WHERE active=1 ORDER BY grade, full_name").fetchall()
+    boxes = "".join(f'<label><input type="checkbox" name="students" value="{s["id"]}"{" checked" if s["id"] in mine else ""}> '
+                    f'{esc(s["full_name"])} <span class="muted">({esc(R.GRADE_NAME.get(s["grade"], ""))})</span></label>' for s in studs)
+    members = form("group_members", hid(gid=gid) + f'<div class="chk">{boxes}</div>', f"/group/{gid}", "ذخیره‌ی اعضا", block=True)
+    used = conn.execute("SELECT COUNT(*) c FROM assignment_groups ag JOIN assignments a ON a.id=ag.assignment_id "
+                        "WHERE ag.group_id=? AND a.status='active'", (gid,)).fetchone()["c"]
+    warn = f"{fa(used)} تکلیف فعال برای این گروه تعریف شده و بعد از حذف مخاطبی نخواهد داشت. " if used else ""
+    delete = form("group_delete", hid(gid=gid) + f'<label><input type="checkbox" name="confirm" value="1"> {esc(warn)}می‌خواهم این گروه حذف شود</label> ',
+                  "/groups", "🗑 حذف گروه", "warn", "گروه حذف شود؟")
+    body = (f'<p><a href="/groups">← همه‌ی گروه‌ها</a></p><h1>{esc(g["name"])}</h1><p class="sub">{fa(len(mine))} عضو</p>'
+            f'<h2>اعضا</h2><div class="card">{members}</div><h2>حذف</h2><div class="card">{delete}</div>')
+    return layout(g["name"], body, "/groups", logo=logo)
 
 
 def not_found(logo=False) -> str:
@@ -489,17 +576,22 @@ def points_page(conn, cfg, now, logo=False) -> str:
     for s in students_active(conn):
         a, p = R.points_total(conn, s["id"])
         rows.append([link(f"/student/{s['id']}", s["full_name"]), fa(a), fa(p) if p else "—"])
-    pending = conn.execute("SELECT l.*, s.full_name FROM points_ledger l JOIN students s ON s.id=l.student_id "
-                           "WHERE l.status='pending' AND l.kind<>'badge' ORDER BY l.id").fetchall()
-    p_rows = [[link(f"/student/{r['student_id']}", r["full_name"]), esc(r["reason"]), "+" + fa(r["delta"]),
-               f'<span class="nowrap">{esc(J.fmt_short(r["created_ts"]))}</span>'] for r in pending]
-    for b in conn.execute("SELECT b.*, s.full_name FROM badges b JOIN students s ON s.id=b.student_id WHERE b.status='pending' ORDER BY b.awarded_ts").fetchall():
-        p_rows.append([link(f"/student/{b['student_id']}", b["full_name"]), "🏅 " + esc(b["title"]), "—", f'<span class="nowrap">{esc(J.fmt_short(b["awarded_ts"]))}</span>'])
-    pending = list(pending) + [None] * (len(p_rows) - len(pending))
-    ptbl = table(["دانش‌آموز", "دلیل", "امتیاز", "زمان"], p_rows) if p_rows else '<div class="card muted">امتیاز در انتظار تأییدی نیست ✅</div>'
-    note = ('<p class="note">تأیید، رد و تغییر دستی امتیازها فقط در بات انجام می‌شود (پنل فقط‌خواندنی است): '
-            'پنل مدیریت ← «⭐ تأیید امتیازها».</p>')
+    p_rows = []
+    for r in conn.execute("SELECT l.*, s.full_name FROM points_ledger l JOIN students s ON s.id=l.student_id "
+                          "WHERE l.status='pending' AND l.kind<>'badge' ORDER BY l.id").fetchall():
+        p_rows.append([link(f"/student/{r['student_id']}", r["full_name"]), esc(r["reason"]), "+" + fa(r["delta"]),
+                       f'<span class="nowrap">{esc(J.fmt_short(r["created_ts"]))}</span>',
+                       form("item_ok", hid(kind="points", id=r["id"]), "/points", "✅ تأیید") + " " +
+                       form("item_no", hid(kind="points", id=r["id"]), "/points", "❌ رد", "warn")])
+    for bd in conn.execute("SELECT b.*, s.full_name FROM badges b JOIN students s ON s.id=b.student_id WHERE b.status='pending' ORDER BY b.awarded_ts").fetchall():
+        p_rows.append([link(f"/student/{bd['student_id']}", bd["full_name"]), "🏅 " + esc(bd["title"]), "—",
+                       f'<span class="nowrap">{esc(J.fmt_short(bd["awarded_ts"]))}</span>',
+                       form("item_ok", hid(kind="badge", id=bd["id"]), "/points", "✅ تأیید") + " " +
+                       form("item_no", hid(kind="badge", id=bd["id"]), "/points", "❌ رد", "warn", "رد نشان، آن را حذف و مسدود می‌کند. ادامه؟")])
+    ptbl = table(["دانش‌آموز", "دلیل", "امتیاز", "زمان", "تصمیم"], p_rows) if p_rows else '<div class="card muted">امتیاز در انتظار تأییدی نیست ✅</div>'
+    all_btn = form("items_all", "", "/points", f"✅ تأیید همه‌ی {fa(len(p_rows))} مورد", confirm="همه‌ی موردهای منتظر تأیید شوند؟") if p_rows else ""
+    note = '<p class="note">تأیید یا رد، دانش‌آموز را مثل بات خبردار می‌کند. تغییر دستی امتیاز از صفحه‌ی هر دانش‌آموز ششمی انجام می‌شود.</p>'
     body = (f'<h1>امتیازها</h1><p class="sub">امتیاز تأییدشده‌ی هر دانش‌آموز پایه‌ی ششم</p>{note}'
-            f'<div class="two"><div><h2>در انتظار تأیید ({fa(len(pending))})</h2>{ptbl}</div>'
+            f'<div class="two"><div><h2>در انتظار تأیید ({fa(len(p_rows))})</h2>{ptbl}{all_btn}</div>'
             f'<div><h2>جدول امتیاز</h2>{table(["دانش‌آموز", "تأییدشده", "در انتظار"], rows)}</div></div>')
     return layout("امتیازها", body, "/points", logo=logo)

@@ -1,7 +1,43 @@
 {
-  "generated_at": "2026-10-31T18:27:06+00:00",
+  "generated_at": "2026-11-01T21:35:22+00:00",
   "generator": "scripts/map.py",
   "modules": [
+    {
+      "file": "app/actions.py",
+      "lines": 226,
+      "functions": [
+        "_ctx",
+        "add_students",
+        "_student",
+        "rename_student",
+        "set_username",
+        "toggle_active",
+        "reset_login",
+        "set_student_groups",
+        "create_group",
+        "delete_group",
+        "set_group_members",
+        "set_status",
+        "approve_item",
+        "reject_item",
+        "approve_all",
+        "adjust_points",
+        "delete_badge"
+      ],
+      "classes": [
+        "PanelApp"
+      ],
+      "imports_internal": [
+        "admin",
+        "core",
+        "fa",
+        "points",
+        "review",
+        "rules",
+        "usernames"
+      ],
+      "entry_point": false
+    },
     {
       "file": "app/admin.py",
       "lines": 1270,
@@ -253,9 +289,11 @@
     },
     {
       "file": "app/panel.py",
-      "lines": 427,
+      "lines": 532,
       "functions": [
         "open_ro",
+        "open_rw",
+        "csrf_token",
         "code_hash",
         "make_server",
         "run"
@@ -266,6 +304,8 @@
         "Handler"
       ],
       "imports_internal": [
+        "actions",
+        "bale",
         "config",
         "fa",
         "jalali",
@@ -276,9 +316,12 @@
     },
     {
       "file": "app/panel_ui.py",
-      "lines": 506,
+      "lines": 598,
       "functions": [
         "esc",
+        "form",
+        "hid",
+        "status_form",
         "has_logo",
         "_fa_node",
         "persian_digits",
@@ -302,6 +345,8 @@
         "badges_page",
         "feedback_page",
         "audit_page",
+        "groups_page",
+        "group_page",
         "not_found",
         "_pair",
         "_book_section",
@@ -815,6 +860,7 @@
     "tests/test_grade9.py",
     "tests/test_login_edit.py",
     "tests/test_panel.py",
+    "tests/test_panel_edit.py",
     "tests/test_review.py",
     "tests/test_rules.py"
   ]
