@@ -202,13 +202,20 @@ def test_edit_multiple_times_until_deadline():
     assert any(b["callback_data"] == "s:a:1" for row in bale.out[-1][2] for b in row)
 
 
-def test_edit_closes_at_deadline():
+def test_edit_open_four_days_then_closes():
     app, bale, dl = mk_edit()
+    # بعد از مهلت هنوز تا ۴ روز می‌شود ویرایش کرد و وضعیت زمانی اول حفظ می‌شود
+    app._t = dl + 2 * H
+    go(app, upd(STU, data="s:ed:1"), upd(STU, photo=True), upd(STU, data="s:fin"))
+    assert final(app)["on_time"] == 1 and (final(app)["over_minutes"] or 0) == 0
+    go(app, upd(STU, data="s:rep"))
+    assert "گزارش ارسال‌ها" in bale.texts(STU)[-1] and "ویرایش تا" in bale.texts(STU)[-1]
     keep = final(app)
     kept = files_of(app, keep["id"])
-    # ویرایش را قبل از مهلت شروع می‌کند و بعد از مهلت «ارسال نهایی» می‌زند ← رد؛ پاسخ قبلی حفظ می‌شود
+    # ویرایش را داخل پنجره شروع می‌کند و بعد از پایان پنجره «ارسال نهایی» می‌زند ← رد؛ پاسخ قبلی حفظ می‌شود
+    app._t = dl + 90 * H
     go(app, upd(STU, data="s:ed:1"), upd(STU, photo=True))
-    app._t = dl + 60
+    app._t = dl + 96 * H + 60
     go(app, upd(STU, data="s:fin"))
     assert "مهلت ویرایش همین الان تمام شد" in bale.texts(STU)[-1]
     f = final(app)
@@ -263,7 +270,7 @@ def test_finalize_guard_unit():
     a = conn.execute("SELECT * FROM assignments").fetchone()
     R.finalize(conn, a, 1, 1, 500)
     try:
-        R.finalize(conn, a, 1, 2, 1010)                      # بعد از مهلت، داخل تاخیر مجاز، بدون درخواست ارسال مجدد
+        R.finalize(conn, a, 1, 2, 1000 + 96 * 3600 + 1)      # بعد از پنجره‌ی ویرایش (مهلت + ۴ روز)، بدون درخواست ارسال مجدد
         assert False
     except ValueError as e:
         assert str(e) == "edit_closed"

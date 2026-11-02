@@ -21,6 +21,7 @@ def menu_rows(st):
     if st["grade"] in R.GAMIFIED_GRADES:
         return MENU
     rows = [[btn("📚 تکالیف باز", "s:open"), btn("✅ ارسال‌های من", "s:done")],
+            [btn("📋 گزارش ارسال‌ها", "s:rep")],
             [btn("📈 پیشرفت من", "s:prog"), btn("💬 بازخوردها", "s:fb")]]
     if st["grade"] == 9:     # نهمی: تکلیف + باشگاه کتابخوانی
         rows.append([btn("📖 باشگاه کتابخوانی", "b:home")])
@@ -28,6 +29,7 @@ def menu_rows(st):
 
 
 MENU = [[btn("📚 تکالیف باز", "s:open"), btn("✅ ارسال‌های من", "s:done")],
+        [btn("📋 گزارش ارسال‌ها", "s:rep")],
         [btn("🏅 نشان‌ها و پیشرفت", "s:prog"), btn("💬 بازخوردها", "s:fb")]]
 BACK = [[btn("⬅ منوی اصلی", "s:home")]]
 ALLOWED_EXT = {".jpg", ".jpeg", ".png", ".webp", ".heic", ".pdf"}
@@ -181,6 +183,34 @@ def list_done(app: App, ctx: Ctx, st):
     app.show(ctx, text, rows[:20] + BACK)
 
 
+def report(app: App, ctx: Ctx, st):
+    """گزارش کامل وضعیت دانش‌آموز در همه‌ی تکالیفش (ارسال‌شده، باز، دیرشده، ناقص، عذر موجه)."""
+    now = app.now()
+    icon = {"on_time": "✅", "late": "⏰", "incomplete": "⚠️", "missed": "❌", "excused": "🙏", "waiting": "⏳", "overdue": "⌛"}
+    group = {"on_time": "ok", "late": "late", "incomplete": "inc", "missed": "miss", "waiting": "open", "overdue": "open"}
+    tot = {"ok": 0, "late": 0, "inc": 0, "miss": 0, "open": 0}
+    lines, rows = [], []
+    for a in reversed(R.targets_for_student(app.conn, st["id"])):
+        s = R.student_status(app.conn, a, st["id"], now)
+        c = s["code"]
+        if c in group:
+            tot[group[c]] += 1
+        txt = {"on_time": "به‌موقع", "late": f"با تاخیر ({duration(s['over'])})" if s["over"] else "با تاخیر", "incomplete": "ناقص؛ دوباره بفرست",
+               "missed": "ارسال‌نشده", "excused": "عذر موجه", "waiting": f"منتظر ارسال تا {J.fmt_short(R.effective_deadline(app.conn, a, st['id']))}",
+               "overdue": "مهلت گذشته؛ هنوز می‌توانی با تاخیر بفرستی"}[c]
+        can_edit = bool(s["sub"]) and not R.open_resubmit(app.conn, a["id"], st["id"]) and R.can_submit(app.conn, a, st["id"], now)[0]
+        extra = f" — ✏ ویرایش تا {J.fmt_short(R.edit_end(app.conn, a, st['id']))}" if can_edit else ""
+        lines.append(f"{icon[c]} {R.KIND_ICON[a['kind']]} {a['title']} — {txt}{extra}")
+        if c in ("waiting", "overdue", "incomplete") or can_edit:
+            rows.append([btn(f"{'✏' if s['sub'] else '📤'} {a['title']}"[:50], f"s:a:{a['id']}")])
+    if not lines:
+        app.show(ctx, "هنوز تکلیفی برای تو ثبت نشده است.", BACK)
+        return
+    head = (f"📋 گزارش ارسال‌های {st['full_name']}\n\n✅ {fa(tot['ok'])} به‌موقع | ⏰ {fa(tot['late'])} با تاخیر | ⚠️ {fa(tot['inc'])} ناقص | "
+            f"❌ {fa(tot['miss'])} ارسال‌نشده | ⏳ {fa(tot['open'])} باز\n\n")
+    app.show(ctx, head + "\n".join(lines[:40]), rows[:20] + BACK)
+
+
 def progress(app: App, ctx: Ctx, st):
     now, n = app.now(), app.cfg.streak_size
     t = R.student_stats(app.conn, st["id"], now, n)
@@ -241,7 +271,8 @@ def view_assignment(app: App, ctx: Ctx, st, aid: int):
     sub, req = s["sub"], R.open_resubmit(app.conn, aid, st["id"])
     rows = []
     if sub and not req and ok:
-        lines.append(f"✏ تا پایان مهلت ({J.fmt_short(dl)}) هر چند بار بخواهی می‌توانی پاسخت را ویرایش کنی.")
+        lines.append(f"✏ تا {J.fmt(R.edit_end(app.conn, a, st['id']))} هر چند بار بخواهی می‌توانی پاسخت را ویرایش کنی"
+                     + (" (وضعیت زمانی ارسال اولت تغییر نمی‌کند)." if now > dl else "."))
         rows.append([btn("✏ ویرایش پاسخ", f"s:ed:{aid}"), btn("👁 دیدن پاسخ فعلی", f"s:vw:{aid}")])
     elif sub:
         rows.append([btn("👁 دیدن پاسخ فعلی", f"s:vw:{aid}")])
@@ -265,7 +296,7 @@ def view_mine(app: App, ctx: Ctx, st, aid: int):
 
 
 def start_edit(app: App, ctx: Ctx, st, aid: int):
-    """ویرایش پاسخ فعلی (افزودن/حذف فایل) تا پیش از پایان مهلت؛ هر چند بار."""
+    """ویرایش پاسخ فعلی (افزودن/حذف فایل) تا پایان پنجره‌ی ویرایش (مهلت + ۴ روز)؛ هر چند بار."""
     a = app.assignment(aid)
     sub = R.current_final(app.conn, aid, st["id"]) if a else None
     ok, why = R.can_submit(app.conn, a, st["id"], app.now()) if a else (False, "")
@@ -438,7 +469,7 @@ def finish(app: App, ctx: Ctx, st):
     app.clear_state(ctx.chat_id)
     _purge_superseded(app, a["id"], st["id"])
     if data.get("edit") and not was_req:
-        head = "✅ ویرایش پاسخت ثبت شد (به‌موقع). تا پیش از مهلت هر چند بار بخواهی می‌توانی دوباره ویرایش کنی."
+        head = f"✅ ویرایش پاسخت ثبت شد (وضعیت زمانی ارسال اولت حفظ شد). تا {J.fmt(R.edit_end(app.conn, a, st['id']))} می‌توانی دوباره ویرایش کنی."
     elif was_req:
         head = "🔁 پاسخ جدیدت جایگزین پاسخ قبلی شد."
     elif on_time and over == 0:
@@ -475,6 +506,8 @@ def on_callback(app: App, ctx: Ctx, st, parts):
         list_open(app, ctx, st)
     elif cmd == "done":
         list_done(app, ctx, st)
+    elif cmd == "rep":
+        report(app, ctx, st)
     elif cmd == "prog":
         progress(app, ctx, st)
     elif cmd == "fb":

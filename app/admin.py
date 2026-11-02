@@ -207,11 +207,11 @@ def publish(app: App, ctx: Ctx, notify: bool):
         app.send(ctx.chat_id, "تکلیف آماده‌ی انتشاری نیست.", HOME)
         return
     cur = app.conn.execute(
-        "INSERT INTO assignments(title,description,kind,deadline_ts,grace_min,late_hours,target_all,created_ts,points,target_grade) "
-        "VALUES(?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO assignments(title,description,kind,deadline_ts,grace_min,late_hours,target_all,created_ts,points,target_grade,edit_hours) "
+        "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
         (d["title"], "\n".join(d["desc"]), d["kind"], d["deadline"], app.cfg.grace_minutes,
          app.cfg.late_window_hours, 1 if d.get("target_all", True) else 0, app.now(),
-         int(d.get("points", 0)) if d["kind"] == "bonus" else 0, int(d.get("target_grade", R.TARGET_ALL)) if d.get("target_all", True) else 0))
+         int(d.get("points", 0)) if d["kind"] == "bonus" else 0, int(d.get("target_grade", R.TARGET_ALL)) if d.get("target_all", True) else 0, app.cfg.edit_window_hours))
     aid = cur.lastrowid
     for gid in d.get("groups", []):
         app.conn.execute("INSERT OR IGNORE INTO assignment_groups VALUES(?,?)", (aid, gid))

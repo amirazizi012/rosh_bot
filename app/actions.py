@@ -296,9 +296,9 @@ def create_assignment(app: App, admin_id: int, title, desc, kind, points_text, t
     if ts <= app.now():
         return False, "مهلت گذشته است؛ زمانی در آینده بنویس."
     cur = app.conn.execute(
-        "INSERT INTO assignments(title,description,kind,deadline_ts,grace_min,late_hours,target_all,created_ts,points,target_grade) "
-        "VALUES(?,?,?,?,?,?,?,?,?,?)",
-        (title, desc, kind, ts, app.cfg.grace_minutes, app.cfg.late_window_hours, target_all, app.now(), pts, tg))
+        "INSERT INTO assignments(title,description,kind,deadline_ts,grace_min,late_hours,target_all,created_ts,points,target_grade,edit_hours) "
+        "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+        (title, desc, kind, ts, app.cfg.grace_minutes, app.cfg.late_window_hours, target_all, app.now(), pts, tg, app.cfg.edit_window_hours))
     aid = cur.lastrowid
     for g in gids:
         app.conn.execute("INSERT OR IGNORE INTO assignment_groups VALUES(?,?)", (aid, g))

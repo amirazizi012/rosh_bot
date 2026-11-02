@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-02T21:28:47+00:00",
+  "generated_at": "2026-11-02T21:37:27+00:00",
   "generator": "scripts/map.py",
   "modules": [
     {
@@ -215,7 +215,7 @@
     },
     {
       "file": "app/config.py",
-      "lines": 86,
+      "lines": 89,
       "functions": [
         "load_env",
         "_int",
@@ -246,7 +246,7 @@
     },
     {
       "file": "app/db.py",
-      "lines": 167,
+      "lines": 170,
       "functions": [
         "connect",
         "_cols",
@@ -498,7 +498,7 @@
     },
     {
       "file": "app/rules.py",
-      "lines": 350,
+      "lines": 357,
       "functions": [
         "gamified",
         "is_target",
@@ -512,6 +512,7 @@
         "is_excused",
         "get_override",
         "student_status",
+        "edit_end",
         "can_submit",
         "finalize",
         "streak_state",
@@ -551,7 +552,7 @@
     },
     {
       "file": "app/student.py",
-      "lines": 506,
+      "lines": 539,
       "functions": [
         "menu_rows",
         "notify_admins",
@@ -563,6 +564,7 @@
         "home",
         "list_open",
         "list_done",
+        "report",
         "progress",
         "feedbacks",
         "view_assignment",
@@ -658,6 +660,7 @@
         "deadline_ts",
         "grace_min",
         "late_hours",
+        "edit_hours",
         "target_all",
         "status",
         "created_ts",

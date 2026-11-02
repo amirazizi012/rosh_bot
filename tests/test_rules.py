@@ -59,11 +59,18 @@ def test_extension_per_student():
     assert submit(conn, a, T0 + 30 * H)[0] is True
 
 
-def test_replace_before_deadline_only():
+def test_replace_until_edit_window_ends():
     conn = mk(); a = add_asg(conn, T0 + 5 * H)
     submit(conn, a, T0)
     assert R.can_submit(conn, a, 1, T0 + 1)[0]
-    assert not R.can_submit(conn, a, 1, T0 + 6 * H)[0]
+    assert R.can_submit(conn, a, 1, T0 + 6 * H)[0]                     # بعد از مهلت، تا ۴ روز
+    assert R.can_submit(conn, a, 1, T0 + 5 * H + 96 * H)[0]
+    assert not R.can_submit(conn, a, 1, T0 + 5 * H + 96 * H + 1)[0]    # بعد از پنجره‌ی ویرایش بسته است
+    # ویرایش بعد از مهلت وضعیت زمانی ارسال اول (به‌موقع) را حفظ می‌کند
+    d = conn.execute("INSERT INTO submissions(assignment_id,student_id,state,created_ts) VALUES(?,?,'draft',?)", (a["id"], 1, T0 + 6 * H)).lastrowid
+    conn.commit()
+    on, over, _ = R.finalize(conn, a, 1, d, T0 + 6 * H)
+    assert on is True and not over
 
 
 def test_resubmit_inherits_lateness():

@@ -181,7 +181,7 @@ flowchart LR
 | `LOGIN_MODE` | `username` | `both` یعنی کد ۶ رقمی هم قبول است |
 | `SQLITE_JOURNAL` | `WAL` | روی دیسک شبکه‌ای در صورت مشکل `DELETE` |
 
-> `max_files_per_submission` (۱۵ فایل در هر ارسال) در `student.py` اعمال می‌شود ولی از env خوانده **نمی‌شود**.
+> `max_files_per_submission` (پیش‌فرض ۲۰ فایل در هر ارسال) از `MAX_FILES_PER_SUBMISSION` خوانده می‌شود؛ پنجره‌ی ویرایش پاسخ (`EDIT_WINDOW_HOURS`، پیش‌فرض ۹۶ ساعت بعد از مهلت) در ستون `assignments.edit_hours` هر تکلیف ذخیره می‌شود.
 
 ## ۷. کدام جدول را کدام ماژول می‌خواند/می‌نویسد
 
@@ -243,7 +243,7 @@ flowchart LR
 
 ## ۹. مشکلات و ابهام‌های پیداشده
 
-1. `max_files_per_submission` در `student.py` اعمال می‌شود ولی از env قابل تغییر نیست.
+1. (حل‌شده) `MAX_FILES_PER_SUBMISSION` و `EDIT_WINDOW_HOURS` از env خوانده می‌شوند.
 2. `core.py`: `admin_ids/get_setting/set_setting` بعد از تعریف کلاس به `App` چسبانده شده‌اند؛ بهتر است داخل کلاس بروند.
 3. `admin.py` بزرگ است؛ تقسیم به `admin_tasks / admin_students / admin_groups` توسعه را راحت‌تر می‌کند (با آزمون و بدون عجله).
 4. `scripts/map.py` کامنت `# noqa: E402` را جزو نام import در `graph.json` ذخیره می‌کند (جزئی).
@@ -280,7 +280,7 @@ flowchart LR
 
 `md_safe`, `pair_label`, `report_text`, `recent_blocks`, `_int`, `prev_books`, `has_report`, `group_id`, `post_report`, `record_group`, `start`, `_choose_pair`, `_ask_from`, `_preview`, `on_callback`, `on_message`, `home`, `finish`, `mine`, `a_menu`, `a_group_pick`, `set_group`, `_report_line`, `a_list`, `a_view`, `st_edit_book`, `st_edit_pages`, `admin_callback`
 
-**`app/config.py`** (86 خط) — کلاس‌ها: Config
+**`app/config.py`** (89 خط) — کلاس‌ها: Config
 
 `load_env`, `_int`, `load`
 
@@ -288,7 +288,7 @@ flowchart LR
 
 `_admin_ids`, `_get_setting`, `_set_setting`
 
-**`app/db.py`** (167 خط)
+**`app/db.py`** (170 خط)
 
 `connect`, `_cols`, `migrate`
 
@@ -328,17 +328,17 @@ flowchart LR
 
 `handle`, `_display`, `route_group`, `route_callback`, `route_message`
 
-**`app/rules.py`** (350 خط)
+**`app/rules.py`** (357 خط)
 
-`gamified`, `is_target`, `_closed_before_join`, `targets_for_student`, `target_students`, `effective_deadline`, `verdict`, `current_final`, `open_resubmit`, `is_excused`, `get_override`, `student_status`, `can_submit`, `finalize`, `streak_state`, `extra_streak_state`, `add_points`, `points_total`, `student_stats`, `give_badge`, `badge_is_pending`, `_withdraw_pending`, `award_auto`, `describe_for_student`
+`gamified`, `is_target`, `_closed_before_join`, `targets_for_student`, `target_students`, `effective_deadline`, `verdict`, `current_final`, `open_resubmit`, `is_excused`, `get_override`, `student_status`, `edit_end`, `can_submit`, `finalize`, `streak_state`, `extra_streak_state`, `add_points`, `points_total`, `student_stats`, `give_badge`, `badge_is_pending`, `_withdraw_pending`, `award_auto`, `describe_for_student`
 
 **`app/scheduler.py`** (88 خط)
 
 `tick`, `reminders`, `cleanup_exports`, `daily_backup`
 
-**`app/student.py`** (506 خط)
+**`app/student.py`** (539 خط)
 
-`menu_rows`, `notify_admins`, `learn_username`, `try_login`, `start_login`, `ask_code`, `on_code`, `home`, `list_open`, `list_done`, `progress`, `feedbacks`, `view_assignment`, `view_mine`, `start_edit`, `show_draft`, `remove_file`, `_purge_superseded`, `start_upload`, `_unlink_if_unreferenced`, `_discard_drafts`, `_extract`, `on_upload_message`, `finish`, `cancel`, `on_callback`, `on_message`
+`menu_rows`, `notify_admins`, `learn_username`, `try_login`, `start_login`, `ask_code`, `on_code`, `home`, `list_open`, `list_done`, `report`, `progress`, `feedbacks`, `view_assignment`, `view_mine`, `start_edit`, `show_draft`, `remove_file`, `_purge_superseded`, `start_upload`, `_unlink_if_unreferenced`, `_discard_drafts`, `_extract`, `on_upload_message`, `finish`, `cancel`, `on_callback`, `on_message`
 
 **`app/usernames.py`** (16 خط)
 

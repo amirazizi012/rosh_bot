@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS assignments(
   deadline_ts INTEGER NOT NULL,
   grace_min INTEGER NOT NULL,
   late_hours INTEGER NOT NULL,
+  edit_hours INTEGER NOT NULL DEFAULT 96,     -- ویرایش پاسخ تا چند ساعت بعد از مهلت باز است
   target_all INTEGER NOT NULL DEFAULT 1,
   status TEXT NOT NULL DEFAULT 'active',      -- active | cancelled
   created_ts INTEGER NOT NULL,
@@ -158,6 +159,8 @@ def migrate(conn):
         conn.execute("ALTER TABLE assignments ADD COLUMN points INTEGER NOT NULL DEFAULT 0")
     if "target_grade" not in _cols(conn, "assignments"):
         conn.execute("ALTER TABLE assignments ADD COLUMN target_grade INTEGER NOT NULL DEFAULT 6")   # تکالیف قبلی همه برای ششم بوده‌اند
+    if "edit_hours" not in _cols(conn, "assignments"):
+        conn.execute("ALTER TABLE assignments ADD COLUMN edit_hours INTEGER NOT NULL DEFAULT 96")
     if "status" not in _cols(conn, "badges"):
         conn.execute("ALTER TABLE badges ADD COLUMN status TEXT NOT NULL DEFAULT 'approved'")
     if "username" not in _cols(conn, "students"):

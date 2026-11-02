@@ -129,6 +129,11 @@ def student_status(conn, a, sid, now, use_override=True) -> dict:
     return {"code": code, "over": 0 if v == "on_time" else over, "sub": None, "override": None}
 
 
+def edit_end(conn, a, sid) -> int:
+    """آخرین زمانی که دانش‌آموز می‌تواند پاسخ فرستاده‌شده را ویرایش کند (مهلت + پنجره‌ی ویرایش همان تکلیف)."""
+    return effective_deadline(conn, a, sid) + a["edit_hours"] * 3600
+
+
 def can_submit(conn, a, sid, now):
     if a["status"] != "active":
         return False, "این تکلیف لغو شده است."
@@ -137,8 +142,8 @@ def can_submit(conn, a, sid, now):
     sub = current_final(conn, a["id"], sid)
     req = open_resubmit(conn, a["id"], sid)
     if sub and not req:
-        if now <= dl:
-            return True, ""  # پیش از مهلت می‌تواند پاسخ را عوض کند
+        if now <= edit_end(conn, a, sid):
+            return True, ""  # تا پایان پنجره‌ی ویرایش (مهلت + ۴ روز) می‌تواند پاسخ را عوض کند
         return False, "پاسخ این تکلیف را قبلاً فرستاده‌ای. برای ارسال مجدد باید مدیر اجازه بدهد."
     if not sub and v == "closed" and not req:
         return False, "مهلت ارسال این تکلیف بسته شده است. اگر دلیل موجهی داری با مدیر صحبت کن."
@@ -151,12 +156,14 @@ def finalize(conn, a, sid, draft_id: int, now: int):
     v, over = verdict(a, dl, now)
     prev = current_final(conn, a["id"], sid)
     req = open_resubmit(conn, a["id"], sid)
-    if v == "closed" and not req:
+    editing = bool(prev and not req)
+    if editing:
+        if now > edit_end(conn, a, sid):
+            raise ValueError("edit_closed")   # مهلت ویرایش تمام شده؛ پاسخ قبلی دست‌نخورده می‌ماند
+    elif v == "closed" and not req:
         raise ValueError("closed")
-    if prev and not req and now > dl:
-        raise ValueError("edit_closed")   # مهلت ویرایش تمام شده؛ پاسخ قبلی دست‌نخورده می‌ماند
-    if req and prev:
-        # ارسال مجدد به درخواست مدیر، وضعیت زمانی ارسال اول را تغییر نمی‌دهد
+    if (req or (editing and now > dl)) and prev:
+        # ارسال مجدد به درخواست مدیر یا ویرایش بعد از مهلت، وضعیت زمانی ارسال اول را تغییر نمی‌دهد
         on_time, over_m = prev["on_time"], prev["over_minutes"]
     else:
         on_time, over_m = (1 if v == "on_time" else 0), over

@@ -29,7 +29,8 @@ class Config:
     streak_size: int = 6
     reminder_hours: int = 3
     max_file_mb: int = 15
-    max_files_per_submission: int = 15
+    max_files_per_submission: int = 20
+    edit_window_hours: int = 96           # ویرایش پاسخ تا این‌قدر ساعت بعد از مهلت (برای هر تکلیف)
     panel_url: str = ""
     panel_host: str = "127.0.0.1"
     panel_port: int = 8090
@@ -66,6 +67,8 @@ def load() -> Config:
         api_base=os.environ.get("BALE_API_BASE", "https://tapi.bale.ai"),
         grace_minutes=_int("GRACE_MINUTES", 20),
         late_window_hours=_int("LATE_WINDOW_HOURS", 96),
+        edit_window_hours=_int("EDIT_WINDOW_HOURS", 96),
+        max_files_per_submission=_int("MAX_FILES_PER_SUBMISSION", 20),
         streak_size=_int("STREAK_SIZE", 6),
         reminder_hours=_int("REMINDER_HOURS", 3),
         panel_url=os.environ.get("PANEL_URL", "").strip().rstrip("/"),
