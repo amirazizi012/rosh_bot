@@ -1,10 +1,10 @@
 {
-  "generated_at": "2026-11-01T21:35:22+00:00",
+  "generated_at": "2026-11-02T21:28:47+00:00",
   "generator": "scripts/map.py",
   "modules": [
     {
       "file": "app/actions.py",
-      "lines": 226,
+      "lines": 540,
       "functions": [
         "_ctx",
         "add_students",
@@ -22,15 +22,38 @@
         "reject_item",
         "approve_all",
         "adjust_points",
-        "delete_badge"
+        "delete_badge",
+        "_tell",
+        "_save_files",
+        "create_assignment",
+        "add_assignment_files",
+        "delete_assignment_file",
+        "edit_assignment",
+        "_need_ts",
+        "extend_all",
+        "extend_one",
+        "cancel_assignment",
+        "excuse",
+        "request_resubmit",
+        "remind_assignment",
+        "give_feedback",
+        "broadcast",
+        "book_edit",
+        "book_delete",
+        "book_repost",
+        "book_set_group",
+        "admin_add",
+        "admin_remove"
       ],
       "classes": [
         "PanelApp"
       ],
       "imports_internal": [
         "admin",
+        "books",
         "core",
         "fa",
+        "jalali",
         "points",
         "review",
         "rules",
@@ -40,7 +63,7 @@
     },
     {
       "file": "app/admin.py",
-      "lines": 1270,
+      "lines": 1271,
       "functions": [
         "menu",
         "student_buttons",
@@ -192,7 +215,7 @@
     },
     {
       "file": "app/config.py",
-      "lines": 84,
+      "lines": 86,
       "functions": [
         "load_env",
         "_int",
@@ -289,12 +312,13 @@
     },
     {
       "file": "app/panel.py",
-      "lines": 532,
+      "lines": 593,
       "functions": [
         "open_ro",
         "open_rw",
         "csrf_token",
         "code_hash",
+        "parse_multipart",
         "make_server",
         "run"
       ],
@@ -316,7 +340,7 @@
     },
     {
       "file": "app/panel_ui.py",
-      "lines": 598,
+      "lines": 673,
       "functions": [
         "esc",
         "form",
@@ -352,7 +376,9 @@
         "_book_section",
         "student_book_page",
         "books_page",
-        "points_page"
+        "points_page",
+        "messages_page",
+        "admins_page"
       ],
       "classes": [],
       "imports_internal": [
@@ -861,6 +887,7 @@
     "tests/test_login_edit.py",
     "tests/test_panel.py",
     "tests/test_panel_edit.py",
+    "tests/test_panel_phase2.py",
     "tests/test_review.py",
     "tests/test_rules.py"
   ]

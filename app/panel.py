@@ -119,6 +119,27 @@ def code_hash(cfg, code: str) -> str:
     return hmac.new(cfg.token.encode(), code.encode(), hashlib.sha256).hexdigest()
 
 
+MAX_UPLOAD_FILES = 10
+
+
+def parse_multipart(ctype: str, raw: bytes):
+    """فرم multipart را به (فیلدهای متنی، فایل‌ها) تبدیل می‌کند؛ بدون وابستگی تازه (ماژول email)."""
+    from email import policy
+    from email.parser import BytesParser
+    msg = BytesParser(policy=policy.HTTP).parsebytes(b"Content-Type: " + ctype.encode() + b"\r\n\r\n" + raw)
+    form, files = {}, []
+    for part in msg.iter_parts() if msg.is_multipart() else []:
+        name = part.get_param("name", header="content-disposition")
+        fname = part.get_filename()
+        payload = part.get_payload(decode=True) or b""
+        if fname is not None:
+            if fname and payload:
+                files.append((fname, payload))
+        elif name:
+            form.setdefault(name, []).append(payload.decode("utf-8", "ignore"))
+    return form, files
+
+
 # ---------- سرور ----------
 class PanelServer(ThreadingHTTPServer):
     daemon_threads = True
@@ -291,7 +312,8 @@ class Handler(BaseHTTPRequestHandler):
         with closing(open_ro(cfg)) as conn:
             pages = {"/": UI.dashboard, "/students": UI.students_page, "/assignments": UI.assignments_page,
                      "/badges": UI.badges_page, "/feedback": UI.feedback_page, "/audit": UI.audit_page,
-                     "/points": UI.points_page, "/groups": UI.groups_page}
+                     "/points": UI.points_page, "/groups": UI.groups_page,
+                     "/messages": UI.messages_page, "/admins": UI.admins_page}
             days = self._days(u.query)
             if path == "/books":
                 return self.html(UI.books_page(conn, cfg, now, days, logo=logo))
@@ -397,9 +419,17 @@ class Handler(BaseHTTPRequestHandler):
             n = int(self.headers.get("Content-Length", "0"))
         except ValueError:
             n = 0
-        if n > 65536:
+        ctype = self.headers.get("Content-Type", "")
+        multipart = ctype.lower().startswith("multipart/form-data")
+        limit = (srv.cfg.max_file_mb * MAX_UPLOAD_FILES + 1) * 1024 * 1024 if multipart else 65536
+        if n > limit:
             return self.html(UI.not_found(srv.logo), 413)
-        form = parse_qs(self.rfile.read(n).decode("utf-8", "ignore"), keep_blank_values=True)
+        raw = self.rfile.read(n)
+        files = []
+        if multipart:
+            form, files = parse_multipart(ctype, raw)
+        else:
+            form = parse_qs(raw.decode("utf-8", "ignore"), keep_blank_values=True)
         one = lambda k, d="": (form.get(k, [d])[0] if form.get(k) else d)  # noqa: E731
         back = one("back", "/")
         if not self._origin_ok():
@@ -413,6 +443,7 @@ class Handler(BaseHTTPRequestHandler):
         conn = open_rw(srv.cfg)
         try:
             app = actions.PanelApp(srv.cfg, srv.bale(), conn)
+            app.upload = files
             if not app.is_admin(admin_id):
                 return self._flash_redirect(back, False, "دسترسی مدیر برای این نشست دیگر فعال نیست.")
             ints = lambda k: [int(x) for x in form.get(k, []) if x.isdigit()]  # noqa: E731
@@ -511,6 +542,29 @@ ACTIONS = {
     "items_all": lambda a, m, one, i, ints: actions.approve_all(a, m),
     "points_adjust": lambda a, m, one, i, ints: actions.adjust_points(a, m, i("sid"), one("delta"), one("reason")),
     "badge_delete": lambda a, m, one, i, ints: actions.delete_badge(a, m, i("bid")),
+    # تکلیف
+    "asg_create": lambda a, m, one, i, ints: actions.create_assignment(
+        a, m, one("title"), one("desc"), one("kind"), one("points"), one("target"), ints("groups"), one("deadline"), one("notify") == "1", a.upload),
+    "asg_edit": lambda a, m, one, i, ints: actions.edit_assignment(a, m, i("aid"), one("title"), one("desc"), one("points")),
+    "asg_files": lambda a, m, one, i, ints: actions.add_assignment_files(a, m, i("aid"), a.upload),
+    "asg_file_del": lambda a, m, one, i, ints: actions.delete_assignment_file(a, m, i("fid")),
+    "asg_extend_all": lambda a, m, one, i, ints: actions.extend_all(a, m, i("aid"), one("deadline")),
+    "asg_extend_one": lambda a, m, one, i, ints: actions.extend_one(a, m, i("aid"), i("sid"), one("deadline")),
+    "asg_cancel": lambda a, m, one, i, ints: actions.cancel_assignment(a, m, i("aid"), one("restore") == "1"),
+    "asg_excuse": lambda a, m, one, i, ints: actions.excuse(a, m, i("aid"), i("sid"), one("reason")),
+    "asg_resubmit": lambda a, m, one, i, ints: actions.request_resubmit(a, m, i("aid"), i("sid"), one("note")),
+    "asg_remind": lambda a, m, one, i, ints: actions.remind_assignment(a, m, i("aid")),
+    # پیام و بازخورد
+    "feedback": lambda a, m, one, i, ints: actions.give_feedback(a, m, i("sid"), i("aid"), one("text")),
+    "broadcast": lambda a, m, one, i, ints: actions.broadcast(a, m, one("target"), one("text")),
+    # باشگاه کتابخوانی
+    "book_edit": lambda a, m, one, i, ints: actions.book_edit(a, m, i("rid"), one("book"), one("from_p"), one("to_p")),
+    "book_delete": lambda a, m, one, i, ints: actions.book_delete(a, m, i("rid")),
+    "book_repost": lambda a, m, one, i, ints: actions.book_repost(a, m, i("rid")),
+    "book_group": lambda a, m, one, i, ints: actions.book_set_group(a, m, int(one("chat_id") or 0) if one("chat_id").lstrip("-").isdigit() else 0),
+    # مدیران
+    "admin_add": lambda a, m, one, i, ints: actions.admin_add(a, m, one("uid")),
+    "admin_remove": lambda a, m, one, i, ints: actions.admin_remove(a, m, i("uid")),
 }
 
 
