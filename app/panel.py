@@ -3,7 +3,7 @@
 اصول طراحی
 • خواندن: دیتابیس اصلی با mode=ro / query_only باز می‌شود. تغییر: فقط از POST /act/<نام> (ADR 0009) با اتصال نوشتنی کوتاه‌عمر،
   نشست معتبر، مدیر بودن، توکن CSRF و بررسی Origin؛ منطق تغییر در app/actions.py است.
-• ورود: مدیر در بات «🌐 ورود به پنل وب» را می‌زند و یک کد ۸ رقمی یک‌بارمصرف (۵ دقیقه) می‌گیرد؛ رمز عبور نداریم.
+• ورود: مدیر در بات «🌐 ورود به پنل وب» را می‌زند و یک کد ۸ رقمی یک‌بارمصرف (بدون محدودیت زمانی) می‌گیرد؛ اگر PANEL_PASSWORD تنظیم باشد، رمز ثابت هم لازم است.
 • نشست‌ها و کدهای مصرف‌شده در یک فایل جدا (panel.db) نگه داشته می‌شوند، نه در دیتابیس اصلی.
 """
 from __future__ import annotations
@@ -84,7 +84,6 @@ class Store:
         token = secrets.token_urlsafe(32)
         with closing(self._c()) as c:
             c.execute("DELETE FROM sessions WHERE expires_ts<?", (now,))
-            c.execute("DELETE FROM used_codes WHERE ts<?", (now - 3600,))
             c.execute("INSERT INTO sessions VALUES(?,?,?)", (self._h(token), admin_id, now + SESSION_TTL))
             c.commit()
         return token
@@ -267,7 +266,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/login":
             if method == "POST":
                 return self.do_login(now)
-            return self.html(UI.login_page(logo=srv.logo))
+            return self.html(UI.login_page(logo=srv.logo, password=bool(srv.cfg.panel_password)))
         if path == "/logout" and method == "POST":
             srv.store.drop(self.cookie())
             return self.redirect("/login", self.set_cookie("", 0))
@@ -349,7 +348,7 @@ class Handler(BaseHTTPRequestHandler):
         srv: PanelServer = self.server
         ip = self.ip()
         if srv.too_many(ip, now):
-            return self.html(UI.login_page("تلاش‌های ناموفق زیاد بود؛ ۱۰ دقیقه بعد دوباره امتحان کن.", srv.logo), 429)
+            return self.html(UI.login_page("تلاش‌های ناموفق زیاد بود؛ ۱۰ دقیقه بعد دوباره امتحان کن.", srv.logo, bool(srv.cfg.panel_password)), 429)
         try:
             n = int(self.headers.get("Content-Length", "0"))
         except ValueError:
@@ -357,18 +356,20 @@ class Handler(BaseHTTPRequestHandler):
         form = parse_qs(self.rfile.read(min(n, 2048)).decode("utf-8", "ignore"))
         code = en((form.get("code", [""])[0])).strip().replace(" ", "")
         admin_id = None
-        if code.isdigit() and len(code) == 8:
+        pw = self.server.cfg.panel_password
+        pw_ok = (not pw) or hmac.compare_digest(form.get("password", [""])[0].encode(), pw.encode())
+        if pw_ok and code.isdigit() and len(code) == 8:
             h = code_hash(srv.cfg, code)
             with closing(open_ro(srv.cfg)) as conn:
                 try:
-                    r = conn.execute("SELECT admin_id FROM web_logins WHERE code_hash=? AND expires_ts>?", (h, now)).fetchone()
+                    r = conn.execute("SELECT admin_id FROM web_logins WHERE code_hash=?", (h,)).fetchone()
                 except sqlite3.Error:
                     r = None
             if r and srv.store.consume_code(h, now):
                 admin_id = r["admin_id"]
         if not admin_id:
             srv.add_fail(ip, now)
-            return self.html(UI.login_page("کد درست نیست یا منقضی شده است. از بات کد تازه بگیر.", srv.logo), 401)
+            return self.html(UI.login_page("رمز یا کد درست نیست (یا قبلاً استفاده شده). از بات کد تازه بگیر.", srv.logo, bool(pw)), 401)
         token = srv.store.new_session(admin_id, now)
         return self.redirect("/", self.set_cookie(token, SESSION_TTL))
 
@@ -385,7 +386,10 @@ class Handler(BaseHTTPRequestHandler):
         host = self.headers.get("Host", "")
         if self.server.cfg.panel_trust_proxy and self.headers.get("X-Forwarded-Host"):
             host = self.headers["X-Forwarded-Host"].split(",")[0].strip()
-        return urlparse(origin).netloc == host
+        allowed = {host}
+        if self.server.cfg.panel_url:
+            allowed.add(urlparse(self.server.cfg.panel_url).netloc)
+        return urlparse(origin).netloc in allowed
 
     def do_action(self, name: str, admin_id: int, now: int):
         srv: PanelServer = self.server

@@ -41,6 +41,7 @@ class Config:
     panel_secure_cookie: bool = False
     panel_trust_proxy: bool = False
     panel_enable: bool = False
+    panel_password: str = ""              # رمز ثابت پنل؛ خالی = فقط کد یک‌بارمصرف
     login_mode: str = "username"          # username | both (کد ۶ رقمی هم قبول شود)
 
 
@@ -79,5 +80,6 @@ def load() -> Config:
         panel_secure_cookie=os.environ.get("PANEL_SECURE_COOKIE", "0") == "1",
         panel_trust_proxy=os.environ.get("PANEL_TRUST_PROXY", "0") == "1",
         panel_enable=os.environ.get("PANEL_ENABLE", "0") == "1",
+        panel_password=os.environ.get("PANEL_PASSWORD", "").strip(),
         login_mode="both" if os.environ.get("LOGIN_MODE", "username").strip().lower() == "both" else "username",
     )

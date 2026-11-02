@@ -109,10 +109,20 @@ def test_panel_all():
         # خروج از مسیر پوشه‌ی داده ممکن نیست
         app.conn.execute("UPDATE submission_files SET path='/etc/passwd' WHERE id=1"); app.conn.commit()
         assert cl.req("GET", "/file/1")[0] == 404
-        # کد منقضی
+        # کد بدون محدودیت زمانی: حتی با گذشت زمان معتبر است، ولی فقط یک‌بار
         code2 = web_code(app, bale)
-        app.conn.execute("UPDATE web_logins SET expires_ts=?", (int(time.time()) - 5,)); app.conn.commit()
+        assert app.conn.execute("SELECT expires_ts FROM web_logins").fetchone()[0] > time.time() + 10 ** 8
+        c2 = Client(port); assert c2.login(code2)[0] == 303
         assert Client(port).login(code2)[0] == 401
+        # رمز ثابت: بدون رمز یا با رمز غلط رد؛ با رمز درست و کد تازه قبول
+        srv.fails.clear()
+        srv.cfg.panel_password = "Rosh-Pass-123"
+        code3 = web_code(app, bale)
+        assert Client(port).req("POST", "/login", f"code={code3}")[0] == 401
+        assert Client(port).req("POST", "/login", f"password=bad&code={code3}")[0] == 401
+        assert Client(port).req("POST", "/login", f"password=Rosh-Pass-123&code={code3}")[0] == 303
+        srv.cfg.panel_password = ""
+        srv.fails.clear()
         # خروج
         assert cl.req("POST", "/logout")[0] == 303
         assert cl.req("GET", "/")[0] == 303

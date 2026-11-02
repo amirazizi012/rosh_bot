@@ -970,7 +970,7 @@ def st_admadd(app, ctx, msg, text, data):
 
 
 # ---------- پنل وب ----------
-WEB_CODE_TTL = 300  # ثانیه
+WEB_CODE_FOREVER = 9999999999  # کد یک‌بارمصرف محدودیت زمانی ندارد (فقط با اولین ورود مصرف می‌شود)
 
 
 def web_login(app: App, ctx: Ctx):
@@ -978,17 +978,18 @@ def web_login(app: App, ctx: Ctx):
     import hashlib
     import hmac
     now = app.now()
-    app.conn.execute("DELETE FROM web_logins WHERE expires_ts<?", (now,))
+    app.conn.execute("DELETE FROM web_logins WHERE admin_id=?", (ctx.user_id,))   # کد قبلیِ مصرف‌نشده باطل می‌شود
     code = f"{secrets.randbelow(10 ** 8):08d}"
     h = hmac.new(app.cfg.token.encode(), code.encode(), hashlib.sha256).hexdigest()
     app.conn.execute("INSERT INTO web_logins(code_hash,admin_id,created_ts,expires_ts) VALUES(?,?,?,?)",
-                     (h, ctx.user_id, now, now + WEB_CODE_TTL))
+                     (h, ctx.user_id, now, WEB_CODE_FOREVER))
     app.conn.commit()
     app.audit(ctx.user_id, "web_login_code", "")
     where = f"\nنشانی پنل: {app.cfg.panel_url}" if app.cfg.panel_url else \
         f"\nنشانی پنل (روی همین سیستم): http://localhost:{app.cfg.panel_port}"
     app.send(ctx.chat_id,
-             f"🌐 کد ورود به پنل وب: {fa(code)}\n\n⏳ فقط {fa(WEB_CODE_TTL // 60)} دقیقه اعتبار دارد و یک‌بار مصرف است."
+             f"🌐 کد ورود به پنل وب: {fa(code)}\n\n🔑 محدودیت زمانی ندارد ولی فقط یک‌بار مصرف است (کد تازه گرفتن کد قبلی را باطل می‌کند)."
+             f"{chr(10) + 'همراه آن رمز ثابت پنل را هم وارد کن.' if app.cfg.panel_password else ''}"
              f"{where}\n\nاز پنل می‌توانی دانش‌آموزان، گروه‌ها، وضعیت پاسخ‌ها، نشان و امتیاز را هم ویرایش کنی؛ پس کد را به کسی نده.",
              [[btn("⬅ پنل مدیریت", "a:menu")]])
 

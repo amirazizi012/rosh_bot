@@ -159,15 +159,15 @@ def layout(title: str, body: str, active: str = "", logged: bool = True, logo: b
             f'<script src="/static/panel.js"></script></body></html>')
 
 
-def login_page(error: str = "", logo: bool = False) -> str:
+def login_page(error: str = "", logo: bool = False, password: bool = False) -> str:
     err = f'<div class="err">{esc(error)}</div>' if error else ""
     body = ('<div class="login card"><h1>ورود به پنل رشد</h1>'
-            '<p class="sub">با کد یک‌بارمصرفی که بات می‌دهد وارد شو.</p>'
+            f'<p class="sub">{"با رمز پنل و کد یک‌بارمصرفی که بات می‌دهد وارد شو." if password else "با کد یک‌بارمصرفی که بات می‌دهد وارد شو."}</p>'
             f'{err}<form method="post" action="/login">'
-            '<input name="code" inputmode="numeric" autocomplete="off" maxlength="12" placeholder="کد ۸ رقمی" autofocus>'
+             + ('<input name="password" type="password" autocomplete="current-password" placeholder="رمز پنل" autofocus>' if password else '') + '<input name="code" inputmode="numeric" autocomplete="off" maxlength="12" placeholder="کد ۸ رقمی" autofocus>'
             '<button>ورود</button></form>'
             '<p class="muted" style="font-size:13px;margin-top:14px">در بات بله: پنل مدیریت ← «🌐 ورود به پنل وب» را بزن و کد را اینجا وارد کن. '
-            'کد ۵ دقیقه اعتبار دارد و یک‌بار مصرف است.</p></div>')
+            'کد محدودیت زمانی ندارد ولی فقط یک‌بار قابل استفاده است.</p></div>')
     return layout("ورود", body, logged=False, logo=logo)
 
 
