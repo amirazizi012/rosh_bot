@@ -57,6 +57,11 @@ def test_csrf_origin_and_admin_checks():
         # Origin دیگر
         st, loc, ok, msg = post(cl, "students_add", tok, origin="http://evil.example", text="نفر جدید", grade="6")
         assert not ok and row(app, "SELECT COUNT(*) c FROM students")["c"] == n
+        # Origin: null (مرورگر با Referrer-Policy بسته) با توکن CSRF درست پذیرفته می‌شود؛ بدون توکن نه
+        st, loc, ok, msg = post(cl, "group_create", tok, origin="null", name="گروه نال")
+        assert ok, msg
+        st, loc, ok, msg = post(cl, "group_create", "bad", origin="null", name="گروه نال۲")
+        assert not ok
         # بدون نشست: هدایت به ورود و بدون تغییر
         anon = Client(cl.port)
         c = http.client.HTTPConnection("127.0.0.1", cl.port, timeout=10)

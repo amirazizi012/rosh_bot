@@ -179,7 +179,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(length))
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
-        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Referrer-Policy", "same-origin")
         self.send_header("Content-Security-Policy",
                          "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; "
                          "font-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'")
@@ -381,7 +381,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _origin_ok(self) -> bool:
         origin = self.headers.get("Origin")
-        if not origin:
+        if not origin or origin == "null":    # با Referrer-Policy بسته، برخی مرورگرها Origin: null می‌فرستند
             return True                       # مرورگرها در POST هم‌مبدأ Origin می‌فرستند؛ نبودنش با CSRF و SameSite پوشش داده می‌شود
         host = self.headers.get("Host", "")
         if self.server.cfg.panel_trust_proxy and self.headers.get("X-Forwarded-Host"):
@@ -402,7 +402,10 @@ class Handler(BaseHTTPRequestHandler):
         form = parse_qs(self.rfile.read(n).decode("utf-8", "ignore"), keep_blank_values=True)
         one = lambda k, d="": (form.get(k, [d])[0] if form.get(k) else d)  # noqa: E731
         back = one("back", "/")
-        if not self._origin_ok() or not hmac.compare_digest(one("_csrf"), self._csrf):
+        if not self._origin_ok():
+            log.warning("رد شد: Origin=%r Host=%r", self.headers.get("Origin"), self.headers.get("Host"))
+            return self._flash_redirect(back, False, "مبدأ درخواست با نشانی پنل نمی‌خواند؛ PANEL_URL و PANEL_TRUST_PROXY را بررسی کن.")
+        if not hmac.compare_digest(one("_csrf"), self._csrf):
             return self._flash_redirect(back, False, "نشست یا فرم معتبر نیست؛ صفحه را دوباره باز کن.")
         fn = ACTIONS.get(name)
         if fn is None:
