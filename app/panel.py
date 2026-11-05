@@ -24,7 +24,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlencode, urlparse
 
-from . import actions, config, panel_ui as UI, reports
+from . import actions, config, panel_ui as UI, receipts, reports
 from . import jalali as J
 from .fa import en
 from .bale import Bale
@@ -313,7 +313,7 @@ class Handler(BaseHTTPRequestHandler):
             pages = {"/": UI.dashboard, "/students": UI.students_page, "/assignments": UI.assignments_page,
                      "/badges": UI.badges_page, "/feedback": UI.feedback_page, "/audit": UI.audit_page,
                      "/points": UI.points_page, "/groups": UI.groups_page,
-                     "/messages": UI.messages_page, "/admins": UI.admins_page}
+                     "/messages": UI.messages_page, "/admins": UI.admins_page, "/receipts": UI.receipts_page}
             days = self._days(u.query)
             if path == "/books":
                 return self.html(UI.books_page(conn, cfg, now, days, logo=logo))
@@ -335,6 +335,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self.html(page) if page else self.html(UI.not_found(logo), 404)
                 if kind == "file":
                     return self.serve_file(conn, "submission_files", ident)
+                if kind == "rfile":
+                    return self.serve_file(conn, "receipts", ident)
                 if kind == "afile":
                     return self.serve_file(conn, "assignment_files", ident)
                 if kind == "zip":
@@ -556,12 +558,14 @@ ACTIONS = {
     "asg_remind": lambda a, m, one, i, ints: actions.remind_assignment(a, m, i("aid")),
     # پیام و بازخورد
     "feedback": lambda a, m, one, i, ints: actions.give_feedback(a, m, i("sid"), i("aid"), one("text")),
+    "feedback_resend": lambda a, m, one, i, ints: actions.resend_feedback(a, m, i("fid")),
     "broadcast": lambda a, m, one, i, ints: actions.broadcast(a, m, one("target"), one("text")),
     # باشگاه کتابخوانی
     "book_edit": lambda a, m, one, i, ints: actions.book_edit(a, m, i("rid"), one("book"), one("from_p"), one("to_p")),
     "book_delete": lambda a, m, one, i, ints: actions.book_delete(a, m, i("rid")),
     "book_repost": lambda a, m, one, i, ints: actions.book_repost(a, m, i("rid")),
     "book_group": lambda a, m, one, i, ints: actions.book_set_group(a, m, int(one("chat_id") or 0) if one("chat_id").lstrip("-").isdigit() else 0),
+    "receipt_seen": lambda a, m, one, i, ints: receipts.mark_seen(a, m, i("rid")),
     # مدیران
     "admin_add": lambda a, m, one, i, ints: actions.admin_add(a, m, one("uid")),
     "admin_remove": lambda a, m, one, i, ints: actions.admin_remove(a, m, i("uid")),
@@ -569,6 +573,14 @@ ACTIONS = {
 
 
 def make_server(cfg, host=None, port=None) -> PanelServer:
+    # اگر پنل جدا از بات اجرا شود و دیتابیس قدیمی باشد، ستون‌های تازه همین‌جا اضافه می‌شود (خواندن ro خودش نمی‌تواند)
+    dbp = Path(cfg.data_dir) / "rosh.db"
+    if dbp.exists():
+        try:
+            from . import db
+            db.connect(dbp).close()
+        except Exception as e:  # noqa: BLE001
+            log.warning("به‌روزرسانی دیتابیس در پنل ناموفق: %s", type(e).__name__)
     return PanelServer(cfg, (host or cfg.panel_host, cfg.panel_port if port is None else port))
 
 

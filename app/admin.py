@@ -25,7 +25,7 @@ MENU = [[btn("📝 تکلیف جدید", "a:new"), btn("📚 تکالیف", "a:a
         [btn("📊 گزارش‌ها", "a:rep"), btn("📢 پیام همگانی", "a:bc")],
         [btn("⭐ تأیید امتیازها", "a:pts:0"), btn("📖 باشگاه کتابخوانی (نهم)", "a:book")],
         [btn("🏅 نشان دستی", "a:badge"), btn("⚙ مدیران", "a:adm")],
-        [btn("🌐 ورود به پنل وب", "a:web")]]
+        [btn("🧾 رسیدها", "a:rcp:0"), btn("🌐 ورود به پنل وب", "a:web")]]
 HOME = [[btn("⬅ پنل مدیریت", "a:menu")]]
 PAGE = 8
 IMG_EXT = {".jpg", ".jpeg", ".png", ".webp"}
@@ -34,8 +34,16 @@ IMG_EXT = {".jpg", ".jpeg", ".png", ".webp"}
 # ---------- ابزارهای مشترک ----------
 def menu(app: App, ctx: Ctx):
     n = points.pending_count(app.conn)
-    rows = [[btn(f"⭐ تأیید نشان و امتیاز" + (f" ({fa(n)})" if n else ""), b["callback_data"]) if b["callback_data"] == "a:pts:0" else b
-             for b in row] for row in MENU]
+    from . import receipts
+    rn = receipts.new_count(app.conn)
+
+    def _lab(b):
+        if b["callback_data"] == "a:pts:0":
+            return btn(f"⭐ تأیید نشان و امتیاز" + (f" ({fa(n)})" if n else ""), b["callback_data"])
+        if b["callback_data"] == "a:rcp:0":
+            return btn("🧾 رسیدها" + (f" ({fa(rn)})" if rn else ""), b["callback_data"])
+        return b
+    rows = [[_lab(b) for b in row] for row in MENU]
     app.show(ctx, "پنل مدیریت «رشد» 🌱\nیکی را انتخاب کن:\n(برای لغو هر مرحله /menu را بفرست)", rows)
 
 
@@ -54,8 +62,7 @@ def student_buttons(studs, prefix):
 def tell(app: App, sid, text, rows=None):
     s = app.student(sid)
     if s and s["chat_id"]:
-        app.send(s["chat_id"], text, rows)
-        return True
+        return bool(app.send(s["chat_id"], text, rows))   # send در خطای بله None برمی‌گرداند؛ پس «ارسال شد» دروغ نمی‌گوییم
     return False
 
 
@@ -643,7 +650,7 @@ def sview(app: App, ctx: Ctx, sid: int):
     rows = top + [
             [btn("📥 همه‌ی پاسخ‌هایش", f"a:stzip:{sid}"), btn("✏ تغییر نام", f"a:stname:{sid}")],
             [btn("🆔 یوزرنیم بله", f"a:stun:{sid}"), btn("🔓 بازنشانی ورود", f"a:streset:{sid}")],
-            [btn("✉ ارسال پیام به او", f"a:bct:s{sid}")],
+            [btn("✉ ارسال پیام به او", f"a:bct:s{sid}"), btn("🧾 رسیدهایش", f"a:rcp:0:{sid}")],
             [btn("▶ فعال‌سازی" if not s["active"] else "⏸ غیرفعال‌سازی", f"a:sttog:{sid}")],
             [btn("⬅ فهرست", f"a:sf:{s['grade']}:0")]]
     app.show(ctx, text, rows)
@@ -845,12 +852,14 @@ def st_fb(app, ctx, msg, text, data):
         return
     s = app.student(data["sid"])
     a = app.assignment(data["aid"]) if data.get("aid") else None
-    app.conn.execute("INSERT INTO feedback(student_id,assignment_id,text,admin_id,ts) VALUES(?,?,?,?,?)",
-                     (s["id"], a["id"] if a else None, raw, ctx.user_id, app.now()))
+    cur = app.conn.execute("INSERT INTO feedback(student_id,assignment_id,text,admin_id,ts,source) VALUES(?,?,?,?,?,'bot')",
+                           (s["id"], a["id"] if a else None, raw, ctx.user_id, app.now()))
     app.conn.commit()
     app.audit(ctx.user_id, "feedback", f"{s['id']}")
     app.clear_state(ctx.chat_id)
     delivered = tell(app, s["id"], "💬 بازخورد مدیر" + (f" برای «{a['title']}»" if a else "") + f":\n\n{raw}")
+    app.conn.execute("UPDATE feedback SET delivered=?, delivered_ts=? WHERE id=?", (1 if delivered else 0, app.now() if delivered else None, cur.lastrowid))
+    app.conn.commit()
     app.send(ctx.chat_id, "✅ بازخورد ثبت و برای دانش‌آموز فرستاده شد." if delivered else "✅ بازخورد ثبت شد (دانش‌آموز هنوز وارد بات نشده؛ بعداً در «بازخوردها» می‌بیند).",
              [[btn("⬅ پنل مدیریت", "a:menu")]])
 
@@ -1026,6 +1035,16 @@ def on_callback(app: App, ctx: Ctx, parts):
     if c == "menu":
         app.clear_state(ctx.chat_id)
         menu(app, ctx)
+    elif c == "rcp":
+        from . import receipts
+        receipts.lst(app, ctx, i(0) if arg else 0, i(1) if len(arg) > 1 else 0)
+    elif c == "rcv":
+        from . import receipts
+        receipts.view(app, ctx, i(0))
+    elif c == "rco":
+        from . import receipts
+        receipts.mark_seen(app, ctx.user_id, i(0))
+        receipts.view(app, ctx, i(0))
     # تکلیف جدید
     elif c == "new":
         new_start(app, ctx)

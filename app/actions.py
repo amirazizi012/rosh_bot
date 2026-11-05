@@ -440,18 +440,47 @@ def remind_assignment(app: App, admin_id: int, aid: int):
 
 
 # ---------- بازخورد و پیام ----------
+def _fb_text(app, f) -> str:
+    a = app.assignment(f["assignment_id"]) if f["assignment_id"] else None
+    return "💬 بازخورد مدیر" + (f" برای «{a['title']}»" if a else "") + f":\n\n{f['text']}"
+
+
+def _push_feedback(app: App, f) -> bool:
+    ok = _tell(app, f["student_id"], _fb_text(app, f))
+    app.conn.execute("UPDATE feedback SET delivered=?, delivered_ts=? WHERE id=?", (1 if ok else 0, app.now() if ok else None, f["id"]))
+    app.conn.commit()
+    return ok
+
+
+def _why_not(app, sid) -> str:
+    s = app.student(sid)
+    return ("دانش‌آموز هنوز وارد بات نشده است" if not (s and s["chat_id"]) else "بله پیام را نپذیرفت (شاید بات را بلاک کرده)")
+
+
 def give_feedback(app: App, admin_id: int, sid: int, aid: int, text: str):
     s = app.student(sid)
     text = (text or "").strip()
     if not s or not text:
         return False, "دانش‌آموز و متن بازخورد لازم است."
     a = app.assignment(aid) if aid else None
-    app.conn.execute("INSERT INTO feedback(student_id,assignment_id,text,admin_id,ts) VALUES(?,?,?,?,?)",
-                     (sid, a["id"] if a else None, text[:2000], admin_id, app.now()))
+    cur = app.conn.execute("INSERT INTO feedback(student_id,assignment_id,text,admin_id,ts,source) VALUES(?,?,?,?,?,'panel')",
+                           (sid, a["id"] if a else None, text[:2000], admin_id, app.now()))
     app.conn.commit()
     app.audit(admin_id, "feedback", str(sid))
-    sent = _tell(app, sid, "💬 بازخورد مدیر" + (f" برای «{a['title']}»" if a else "") + f":\n\n{text[:2000]}")
-    return True, "بازخورد ثبت و فرستاده شد." if sent else "بازخورد ثبت شد (دانش‌آموز هنوز وارد بات نشده)."
+    f = app.conn.execute("SELECT * FROM feedback WHERE id=?", (cur.lastrowid,)).fetchone()
+    if _push_feedback(app, f):
+        return True, "بازخورد ثبت شد و به دانش‌آموز رسید ✅"
+    return True, f"بازخورد ثبت شد ولی هنوز به او نرسیده: {_why_not(app, sid)}. در صفحه‌ی بازخوردها می‌توانی دوباره بفرستی؛ او هم در بات از «💬 بازخوردها» می‌بیند."
+
+
+def resend_feedback(app: App, admin_id: int, fid: int):
+    f = app.conn.execute("SELECT * FROM feedback WHERE id=?", (fid,)).fetchone()
+    if not f:
+        return False, "بازخورد پیدا نشد."
+    app.audit(admin_id, "feedback_resend", f"{fid}:{f['student_id']}")
+    if _push_feedback(app, f):
+        return True, "بازخورد دوباره فرستاده شد و رسید ✅"
+    return False, f"هنوز ارسال نشد: {_why_not(app, f['student_id'])}."
 
 
 def broadcast(app: App, admin_id: int, target: str, text: str):

@@ -105,7 +105,7 @@ document.addEventListener('submit',function(e){
 """
 
 NAV = [("/", "داشبورد"), ("/students", "دانش‌آموزان"), ("/assignments", "تکالیف"), ("/groups", "گروه‌ها"), ("/points", "امتیازها"),
-       ("/badges", "نشان‌ها"), ("/books", "باشگاه کتابخوانی"), ("/messages", "پیام‌ها"), ("/feedback", "بازخوردها"), ("/admins", "مدیران"), ("/audit", "فعالیت مدیران")]
+       ("/badges", "نشان‌ها"), ("/books", "باشگاه کتابخوانی"), ("/messages", "پیام‌ها"), ("/receipts", "رسیدها"), ("/feedback", "بازخوردها"), ("/admins", "مدیران"), ("/audit", "فعالیت مدیران")]
 
 
 def form(action: str, inner: str, back: str, label: str, cls: str = "", confirm: str = "", block: bool = False, multipart: bool = False) -> str:
@@ -381,6 +381,15 @@ def student_page(conn, cfg, now, sid: int, logo=False):
             form("feedback", hid(sid=sid) + f'<p>تکلیف: <select name="aid">{asg_opts}</select></p><textarea name="text" placeholder="متن بازخورد"></textarea>', f"/student/{sid}", "ثبت و ارسال بازخورد", block=True) +
             form("broadcast", hid(target=f"s{sid}") + '<textarea name="text" placeholder="پیام مستقیم (بدون ثبت در بازخوردها)"></textarea>', f"/student/{sid}", "ارسال پیام",
                  confirm="پیام برای این دانش‌آموز فرستاده شود؟", block=True) + '</details>')
+    rc = conn.execute("SELECT * FROM receipts WHERE student_id=? ORDER BY ts DESC LIMIT 20", (sid,)).fetchall()
+    rc_rows = [[f'<span class="nowrap">{esc(J.fmt_short(r["ts"]))}</span>', esc(r["note"] or "—"),
+                (f'<a class="pill" href="/rfile/{r["id"]}" target="_blank">دیدن فایل</a>' if r["path"] else '<span class="muted">متنی</span>'),
+                ('<span class="chip wait">بررسی‌نشده</span>' if r["status"] == "new" else '<span class="chip ok">دریافت‌شده</span>'),
+                form("receipt_seen", hid(rid=r["id"]), f"/student/{sid}", "✅ دریافت شد", "ghost") if r["status"] == "new" else ""] for r in rc]
+    rc_html = (f'<h2>رسیدهای واریزی</h2>' + table(["زمان", "توضیح", "رسید", "وضعیت", ""], rc_rows)) if rc_rows else ""
+    fbs = conn.execute("SELECT f.*, a.title FROM feedback f LEFT JOIN assignments a ON a.id=f.assignment_id WHERE f.student_id=? ORDER BY f.ts DESC", (sid,)).fetchall()
+    fb_html = ('<h2 id="fb">بازخوردهایی که به او داده‌ای (' + fa(len(fbs)) + ')</h2>' +
+               (table(["تاریخ و ساعت", "تکلیف", "بازخورد", "ارسال", ""], _fb_rows(fbs, f"/student/{sid}", with_student=False)) if fbs else '<div class="card muted">هنوز بازخوردی ثبت نشده.</div>'))
     manage = ('<details class="mng"><summary>✏ مدیریت دانش‌آموز</summary>' +
               form("student_rename", hid(sid=sid) + f'<input name="name" value="{esc(s["full_name"])}" size="24"> ', f"/student/{sid}", "تغییر نام") + "<br>" +
               form("student_username", hid(sid=sid) + f'<input name="username" value="{esc(s["username"] or "")}" size="20" dir="ltr" placeholder="@username (خالی = پاک)"> ',
@@ -392,7 +401,7 @@ def student_page(conn, cfg, now, sid: int, logo=False):
                '<p class="muted">هنوز گروهی نساخته‌ای؛ از صفحه‌ی «گروه‌ها» بساز.</p>') + '</details>')
     body = (f'<p><a href="/students">← همه‌ی دانش‌آموزان</a></p><h1>{esc(s["full_name"])}{state}</h1>'
             f'<p class="sub">پایه‌ی {esc(R.GRADE_NAME.get(s["grade"], ""))} | گروه‌ها: {groups_of(conn, sid)}</p><div class="grid">{chips}</div>'
-            f'{manage}{msgs}{streak_html}<h2>تکالیف</h2>{asg_html}{ledger_html}{bottom}{book_html}'
+            f'{manage}{msgs}{fb_html}{rc_html}{streak_html}<h2>تکالیف</h2>{asg_html}{ledger_html}{bottom}{book_html}'
             f'<p style="margin-top:16px"><a class="btn ghost" href="/zip-student/{sid}">📥 دانلود همه‌ی پاسخ‌های او (ZIP)</a></p>')
     return layout(s["full_name"], body, "/students", logo=logo)
 
@@ -494,13 +503,34 @@ def badges_page(conn, cfg, now, logo=False) -> str:
     return layout("نشان‌ها", body, "/badges", logo=logo)
 
 
+def _fb_status(f) -> str:
+    if f["delivered"] == 1:
+        return f'<span class="chip ok">رسید</span> <span class="muted nowrap">{esc(J.fmt_short(f["delivered_ts"]))}</span>' if f["delivered_ts"] else '<span class="chip ok">رسید</span>'
+    if f["delivered"] == 0:
+        return '<span class="chip wait">نرسیده</span>'
+    return '<span class="muted">نامعلوم (ثبت قدیمی)</span>'
+
+
+def _fb_rows(fbs, back, with_student=True):
+    rows = []
+    for f in fbs:
+        row = ([link(f"/student/{f['student_id']}", f["full_name"])] if with_student else []) + [
+            f'<span class="nowrap">{esc(J.fmt(f["ts"]))}</span>', esc(f["title"] or "—"), esc(f["text"]), _fb_status(f),
+            form("feedback_resend", hid(fid=f["id"]), back, "🔁 ارسال دوباره", "ghost") if f["delivered"] != 1 else ""]
+        rows.append(row)
+    return rows
+
+
 def feedback_page(conn, cfg, now, logo=False) -> str:
     fbs = conn.execute("SELECT f.*, s.full_name, a.title FROM feedback f JOIN students s ON s.id=f.student_id "
-                       "LEFT JOIN assignments a ON a.id=f.assignment_id ORDER BY f.ts DESC LIMIT 150").fetchall()
-    rows = [[link(f"/student/{f['student_id']}", f["full_name"]), esc(f["title"] or "—"), esc(f["text"]),
-             f'<span class="nowrap">{esc(J.fmt_short(f["ts"]))}</span>'] for f in fbs]
-    body = ('<h1>بازخوردها</h1><p class="sub">آخرین بازخوردهایی که به دانش‌آموزان داده شده</p>' +
-            (table(["دانش‌آموز", "تکلیف", "بازخورد", "زمان"], rows) if rows else '<div class="card muted">بازخوردی ثبت نشده است.</div>'))
+                       "LEFT JOIN assignments a ON a.id=f.assignment_id ORDER BY f.ts DESC LIMIT 300").fetchall()
+    per = conn.execute("SELECT s.id, s.full_name, s.grade, COUNT(f.id) n, MAX(f.ts) last, SUM(CASE WHEN f.delivered IS NOT 1 THEN 1 ELSE 0 END) bad "
+                       "FROM feedback f JOIN students s ON s.id=f.student_id GROUP BY s.id ORDER BY last DESC").fetchall()
+    summ = [[link(f"/student/{p['id']}#fb", p["full_name"]), esc(R.GRADE_NAME.get(p["grade"], "")), fa(p["n"]),
+             f'<span class="nowrap">{esc(J.fmt(p["last"]))}</span>', (f'<span class="chip wait">{fa(p["bad"])} نرسیده/نامعلوم</span>' if p["bad"] else "✅")] for p in per]
+    body = ('<h1>بازخوردها</h1><p class="sub">هر بازخورد با تاریخ و ساعت ثبت می‌شود و وضعیت رسیدنش به بله معلوم است. تاریخچه‌ی کامل هر نفر در صفحه‌ی خودش (بخش «بازخوردها») است.</p>'
+            '<h2>به تفکیک دانش‌آموز</h2>' + (table(["دانش‌آموز", "پایه", "تعداد", "آخرین بازخورد", "وضعیت ارسال"], summ) if summ else '<div class="card muted">بازخوردی ثبت نشده است.</div>') +
+            '<h2>همه‌ی بازخوردها (جدیدترین اول)</h2>' + (table(["دانش‌آموز", "تاریخ و ساعت", "تکلیف", "بازخورد", "ارسال", ""], _fb_rows(fbs, "/feedback")) if fbs else ""))
     return layout("بازخوردها", body, "/feedback", logo=logo)
 
 
@@ -670,3 +700,21 @@ def admins_page(conn, cfg, now, logo=False) -> str:
             (table(["شناسه", "زمان افزودن", "حذف"], rows) if rows else '<div class="card muted">مدیر افزوده‌شده‌ای نیست.</div>') +
             form("admin_add", '<input name="uid" size="16" dir="ltr" placeholder="شناسه‌ی عددی"> ', "/admins", "➕ افزودن مدیر"))
     return layout("مدیران", body, "/admins", logo=logo)
+
+
+def receipts_page(conn, cfg, now, logo=False) -> str:
+    rows_db = conn.execute("SELECT r.*, s.full_name FROM receipts r JOIN students s ON s.id=r.student_id "
+                           "ORDER BY (r.status='new') DESC, r.ts DESC LIMIT 200").fetchall()
+    rows = []
+    for r in rows_db:
+        ext = Path(r["path"]).suffix.lower() if r["path"] else ""
+        view = ('<span class="muted">رسید متنی</span>' if not r["path"] else f'<a href="/rfile/{r["id"]}" target="_blank"><img loading="lazy" src="/rfile/{r["id"]}" alt="رسید" style="max-height:70px;border-radius:8px"></a>'
+                if ext in IMG_EXT else f'<a class="pill" href="/rfile/{r["id"]}" target="_blank">{esc(r["name"] or "فایل")}</a>')
+        state = '<span class="chip wait">بررسی‌نشده</span>' if r["status"] == "new" else f'<span class="chip ok">دریافت‌شده</span> <span class="muted nowrap">{esc(J.fmt_short(r["seen_ts"]))}</span>'
+        act = form("receipt_seen", hid(rid=r["id"]), "/receipts", "✅ دریافت شد", "ghost") if r["status"] == "new" else ""
+        rows.append([link(f"/student/{r['student_id']}", r["full_name"]), f'<span class="nowrap">{esc(J.fmt_short(r["ts"]))}</span>',
+                     esc(r["note"] or "—"), view, state, act])
+    n = sum(1 for r in rows_db if r["status"] == "new")
+    body = (f'<h1>رسیدهای واریزی</h1><p class="sub">{fa(len(rows_db))} رسید | {fa(n)} بررسی‌نشده — دانش‌آموز از منوی بات «🧾 ارسال رسید» را می‌زند و رسید را می‌فرستد.</p>' +
+            (table(["دانش‌آموز", "زمان", "توضیح", "رسید", "وضعیت", ""], rows) if rows else '<div class="card muted">هنوز رسیدی نرسیده است.</div>'))
+    return layout("رسیدها", body, "/receipts", logo=logo)

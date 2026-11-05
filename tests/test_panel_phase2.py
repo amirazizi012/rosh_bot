@@ -94,6 +94,25 @@ def test_feedback_broadcast_admins_books():
         assert post(cl, "feedback", tok, sid=ali, aid=1, text="آفرین، ادامه بده")[2]
         assert row(app, "SELECT 1 FROM feedback WHERE text='آفرین، ادامه بده'") and len(bale.texts(STU)) == n + 1
         assert not post(cl, "feedback", tok, sid=ali, aid=0, text="  ")[2]
+        f1 = row(app, "SELECT * FROM feedback WHERE text='آفرین، ادامه بده'")
+        assert f1["delivered"] == 1 and f1["delivered_ts"] and f1["source"] == "panel"
+        # وقتی بله خطا بدهد، دروغ نمی‌گوییم: ثبت می‌شود ولی «نرسیده» می‌ماند و ارسال دوباره ممکن است
+        chat = row(app, "SELECT chat_id FROM students WHERE id=?", ali)["chat_id"]
+        bale.fail_chats = {chat}
+        st_, loc, ok_, msg_ = post(cl, "feedback", tok, sid=ali, aid=0, text="بازخورد دوم")
+        assert ok_ and "نرسیده" in msg_
+        f2 = row(app, "SELECT * FROM feedback WHERE text='بازخورد دوم'")
+        assert f2["delivered"] == 0 and f2["delivered_ts"] is None
+        page = cl.req("GET", "/feedback")[2].decode()
+        assert "نرسیده" in page and "بازخورد دوم" in page and "ارسال دوباره" in page
+        assert not post(cl, "feedback_resend", tok, fid=f2["id"])[2]            # هنوز بله خطا می‌دهد
+        bale.fail_chats = set()
+        assert post(cl, "feedback_resend", tok, fid=f2["id"])[2]
+        assert row(app, "SELECT delivered FROM feedback WHERE id=?", f2["id"])["delivered"] == 1
+        assert any("بازخورد دوم" in t for t in bale.texts(STU))
+        # تاریخچه‌ی کامل هر دانش‌آموز با تاریخ، در صفحه‌ی خودش
+        sp = cl.req("GET", f"/student/{ali}")[2].decode()
+        assert 'id="fb"' in sp and "آفرین، ادامه بده" in sp and "بازخورد دوم" in sp
         assert post(cl, "broadcast", tok, target="all", text="سلام به همه")[2]
         assert post(cl, "broadcast", tok, target=f"s{ali}", text="پیام شخصی")[2]
         assert any("پیام شخصی" in t for t in bale.texts(STU))

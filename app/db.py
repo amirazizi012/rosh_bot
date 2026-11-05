@@ -73,10 +73,18 @@ CREATE TABLE IF NOT EXISTS resubmit_requests(
   note TEXT, ts INTEGER NOT NULL, open INTEGER NOT NULL DEFAULT 1,
   PRIMARY KEY(assignment_id, student_id)
 );
+CREATE TABLE IF NOT EXISTS receipts(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  student_id INTEGER NOT NULL, path TEXT NOT NULL, name TEXT, note TEXT,
+  ts INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'new',      -- new | seen
+  seen_ts INTEGER, admin_id INTEGER
+);
 CREATE TABLE IF NOT EXISTS feedback(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   student_id INTEGER NOT NULL, assignment_id INTEGER,
-  text TEXT NOT NULL, admin_id INTEGER, ts INTEGER NOT NULL
+  text TEXT NOT NULL, admin_id INTEGER, ts INTEGER NOT NULL,
+  delivered INTEGER, delivered_ts INTEGER,      -- ۱ = به بله رسید، ۰ = نرسید، NULL = ثبت قدیمی (نامعلوم)
+  source TEXT                                   -- panel | bot
 );
 CREATE TABLE IF NOT EXISTS badges(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -159,6 +167,10 @@ def migrate(conn):
         conn.execute("ALTER TABLE assignments ADD COLUMN points INTEGER NOT NULL DEFAULT 0")
     if "target_grade" not in _cols(conn, "assignments"):
         conn.execute("ALTER TABLE assignments ADD COLUMN target_grade INTEGER NOT NULL DEFAULT 6")   # تکالیف قبلی همه برای ششم بوده‌اند
+    fcols = _cols(conn, "feedback")
+    for col, ddl in (("delivered", "INTEGER"), ("delivered_ts", "INTEGER"), ("source", "TEXT")):
+        if col not in fcols:
+            conn.execute(f"ALTER TABLE feedback ADD COLUMN {col} {ddl}")
     if "edit_hours" not in _cols(conn, "assignments"):
         conn.execute("ALTER TABLE assignments ADD COLUMN edit_hours INTEGER NOT NULL DEFAULT 96")
     if "status" not in _cols(conn, "badges"):

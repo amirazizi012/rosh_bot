@@ -1,10 +1,10 @@
 {
-  "generated_at": "2026-11-02T21:37:27+00:00",
+  "generated_at": "2026-11-05T05:33:27+00:00",
   "generator": "scripts/map.py",
   "modules": [
     {
       "file": "app/actions.py",
-      "lines": 540,
+      "lines": 569,
       "functions": [
         "_ctx",
         "add_students",
@@ -36,7 +36,11 @@
         "excuse",
         "request_resubmit",
         "remind_assignment",
+        "_fb_text",
+        "_push_feedback",
+        "_why_not",
         "give_feedback",
+        "resend_feedback",
         "broadcast",
         "book_edit",
         "book_delete",
@@ -63,7 +67,7 @@
     },
     {
       "file": "app/admin.py",
-      "lines": 1271,
+      "lines": 1290,
       "functions": [
         "menu",
         "student_buttons",
@@ -246,7 +250,7 @@
     },
     {
       "file": "app/db.py",
-      "lines": 170,
+      "lines": 182,
       "functions": [
         "connect",
         "_cols",
@@ -312,7 +316,7 @@
     },
     {
       "file": "app/panel.py",
-      "lines": 593,
+      "lines": 605,
       "functions": [
         "open_ro",
         "open_rw",
@@ -334,13 +338,14 @@
         "fa",
         "jalali",
         "panel_ui",
+        "receipts",
         "reports"
       ],
       "entry_point": true
     },
     {
       "file": "app/panel_ui.py",
-      "lines": 673,
+      "lines": 721,
       "functions": [
         "esc",
         "form",
@@ -367,6 +372,8 @@
         "assignments_page",
         "assignment_page",
         "badges_page",
+        "_fb_status",
+        "_fb_rows",
         "feedback_page",
         "audit_page",
         "groups_page",
@@ -378,7 +385,8 @@
         "books_page",
         "points_page",
         "messages_page",
-        "admins_page"
+        "admins_page",
+        "receipts_page"
       ],
       "classes": [],
       "imports_internal": [
@@ -416,6 +424,27 @@
         "fa",
         "jalali",
         "rules"
+      ],
+      "entry_point": false
+    },
+    {
+      "file": "app/receipts.py",
+      "lines": 131,
+      "functions": [
+        "new_count",
+        "ask",
+        "on_message",
+        "_done",
+        "lst",
+        "view",
+        "mark_seen"
+      ],
+      "classes": [],
+      "imports_internal": [
+        "bale",
+        "core",
+        "fa",
+        "jalali"
       ],
       "entry_point": false
     },
@@ -552,7 +581,7 @@
     },
     {
       "file": "app/student.py",
-      "lines": 539,
+      "lines": 545,
       "functions": [
         "menu_rows",
         "notify_admins",
@@ -738,6 +767,20 @@
       ]
     },
     {
+      "table": "receipts",
+      "columns": [
+        "id",
+        "student_id",
+        "path",
+        "name",
+        "note",
+        "ts",
+        "status",
+        "seen_ts",
+        "admin_id"
+      ]
+    },
+    {
       "table": "feedback",
       "columns": [
         "id",
@@ -745,7 +788,10 @@
         "assignment_id",
         "text",
         "admin_id",
-        "ts"
+        "ts",
+        "delivered",
+        "delivered_ts",
+        "source"
       ]
     },
     {
@@ -891,6 +937,7 @@
     "tests/test_panel.py",
     "tests/test_panel_edit.py",
     "tests/test_panel_phase2.py",
+    "tests/test_receipts.py",
     "tests/test_review.py",
     "tests/test_rules.py"
   ]
