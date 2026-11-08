@@ -483,22 +483,35 @@ def resend_feedback(app: App, admin_id: int, fid: int):
     return False, f"هنوز ارسال نشد: {_why_not(app, f['student_id'])}."
 
 
-def broadcast(app: App, admin_id: int, target: str, text: str):
+def broadcast(app: App, admin_id: int, target: str, text: str, files=()):
     text = (text or "").strip()
-    if not text:
-        return False, "متن پیام را بنویس."
+    if not text and not files:
+        return False, "متن پیام را بنویس یا فایلی ضمیمه کن."
     if not re.fullmatch(r"all|g6|g7|g9|s\d+|\d+", target or ""):
         return False, "گیرنده نامعتبر است."
     rec = admin.bc_recipients(app, target)
     if not rec:
         return False, "گیرنده‌ای پیدا نشد (هنوز وارد بات نشده‌اند یا غیرفعال‌اند)."
-    n = 0
-    for s in rec:
-        if app.send(s["chat_id"], f"📢 پیام مجموعه رشد\n\n{text[:3500]}"):
-            n += 1
-        time.sleep(0.04)
-    app.audit(admin_id, "broadcast", f"{target}:{n}")
-    return True, f"پیام برای {fa(n)} نفر ارسال شد."
+    paths, skipped = [], []
+    cap = app.cfg.max_file_mb * 1024 * 1024
+    folder = None
+    for name, data in list(files)[:admin.BC_MAX_FILES]:
+        ext = Path(name).suffix.lower()
+        if ext not in admin.BC_EXT or not data:
+            skipped.append(f"{name} (نوع فایل مجاز نیست)")
+        elif len(data) > cap:
+            skipped.append(f"{name} (بزرگ‌تر از {fa(app.cfg.max_file_mb)} مگابایت)")
+        else:
+            folder = folder or admin.bc_dir(app)
+            p = folder / f"f{len(paths) + 1}{ext}"
+            p.write_bytes(data)
+            paths.append(str(p))
+    if not text and not paths:
+        return False, "هیچ فایل معتبری نبود. " + "؛ ".join(skipped)
+    n = admin.bc_deliver(app, rec, text, paths)
+    admin.bc_cleanup(paths)
+    app.audit(admin_id, "broadcast", f"{target}:{n}" + (f":{len(paths)}فایل" if paths else ""))
+    return True, f"پیام برای {fa(n)} نفر ارسال شد." + (f" ({fa(len(paths))} فایل)" if paths else "") + (" ⚠ " + "؛ ".join(skipped) if skipped else "")
 
 
 # ---------- باشگاه کتابخوانی ----------

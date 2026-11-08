@@ -379,8 +379,8 @@ def student_page(conn, cfg, now, sid: int, logo=False):
     asg_opts = '<option value="0">بدون تکلیف مشخص</option>' + "".join(f'<option value="{a["id"]}">{esc(a["title"])}</option>' for a in reversed(R.targets_for_student(conn, sid)))
     msgs = ('<details class="mng"><summary>💬 بازخورد و پیام به او</summary>' +
             form("feedback", hid(sid=sid) + f'<p>تکلیف: <select name="aid">{asg_opts}</select></p><textarea name="text" placeholder="متن بازخورد"></textarea>', f"/student/{sid}", "ثبت و ارسال بازخورد", block=True) +
-            form("broadcast", hid(target=f"s{sid}") + '<textarea name="text" placeholder="پیام مستقیم (بدون ثبت در بازخوردها)"></textarea>', f"/student/{sid}", "ارسال پیام",
-                 confirm="پیام برای این دانش‌آموز فرستاده شود؟", block=True) + '</details>')
+            form("broadcast", hid(target=f"s{sid}") + '<textarea name="text" placeholder="پیام مستقیم (بدون ثبت در بازخوردها)"></textarea><p><input type="file" name="files" multiple></p>', f"/student/{sid}", "ارسال پیام",
+                 confirm="پیام برای این دانش‌آموز فرستاده شود؟", block=True, multipart=True) + '</details>')
     rc = conn.execute("SELECT * FROM receipts WHERE student_id=? ORDER BY ts DESC LIMIT 20", (sid,)).fetchall()
     rc_rows = [[f'<span class="nowrap">{esc(J.fmt_short(r["ts"]))}</span>', esc(r["note"] or "—"),
                 (f'<a class="pill" href="/rfile/{r["id"]}" target="_blank">دیدن فایل</a>' if r["path"] else '<span class="muted">متنی</span>'),
@@ -685,8 +685,9 @@ def messages_page(conn, cfg, now, logo=False) -> str:
                     for s in conn.execute("SELECT * FROM students WHERE active=1 ORDER BY grade, full_name")))
     n = conn.execute("SELECT COUNT(*) c FROM students WHERE active=1 AND chat_id IS NOT NULL").fetchone()["c"]
     body = ('<h1>پیام به دانش‌آموزان</h1><p class="sub">پیام از طریق بات بله می‌رود؛ فقط دانش‌آموزانی که وارد بات شده‌اند دریافت می‌کنند ('
-            + fa(n) + ' نفر).</p>' + form("broadcast", f'<p>گیرنده: <select name="target">{opts}</select></p><textarea name="text" placeholder="متن پیام"></textarea>',
-                                    "/messages", "ارسال پیام", confirm="پیام برای گیرندگان انتخاب‌شده فرستاده شود؟", block=True))
+            + fa(n) + ' نفر).</p>' + form("broadcast", f'<p>گیرنده: <select name="target">{opts}</select></p><textarea name="text" placeholder="متن پیام (اگر فایل می‌فرستی می‌تواند خالی باشد)"></textarea>'
+                                    '<p>پیوست (چند فایل: عکس، PDF…): <input type="file" name="files" multiple></p>',
+                                    "/messages", "ارسال پیام", confirm="پیام برای گیرندگان انتخاب‌شده فرستاده شود؟", block=True, multipart=True))
     return layout("پیام‌ها", body, "/messages", logo=logo)
 
 

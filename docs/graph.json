@@ -1,10 +1,10 @@
 {
-  "generated_at": "2026-11-05T05:33:27+00:00",
+  "generated_at": "2026-11-08T17:55:13+00:00",
   "generator": "scripts/map.py",
   "modules": [
     {
       "file": "app/actions.py",
-      "lines": 569,
+      "lines": 582,
       "functions": [
         "_ctx",
         "add_students",
@@ -67,7 +67,7 @@
     },
     {
       "file": "app/admin.py",
-      "lines": 1290,
+      "lines": 1385,
       "functions": [
         "menu",
         "student_buttons",
@@ -134,6 +134,10 @@
         "bc_start",
         "bc_pick",
         "bc_recipients",
+        "bc_dir",
+        "bc_deliver",
+        "bc_cleanup",
+        "_bc_confirm",
         "st_bct",
         "bc_send",
         "st_bds",
@@ -345,7 +349,7 @@
     },
     {
       "file": "app/panel_ui.py",
-      "lines": 721,
+      "lines": 722,
       "functions": [
         "esc",
         "form",

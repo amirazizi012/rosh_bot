@@ -909,32 +909,110 @@ def bc_recipients(app, target):
                             "WHERE sg.group_id=? AND s.active=1 AND s.chat_id IS NOT NULL", (int(target),)).fetchall()
 
 
-def st_bct(app, ctx, msg, text, data):
-    raw = (msg.get("text") or "").strip()
-    if not raw:
-        app.send(ctx.chat_id, "متن پیام را بنویس.")
-        return
-    n = len(bc_recipients(app, data["target"]))
-    if not n:
+BC_EXT = {".jpg", ".jpeg", ".png", ".webp", ".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx", ".txt", ".zip", ".mp3", ".mp4"}
+BC_MAX_FILES = 10
+
+
+def bc_dir(app) -> Path:
+    """پوشه‌ی موقت فایل‌های پیام؛ پوشه‌های بیش از ۲ روز قدیمی پاک می‌شوند."""
+    base = app.data / "broadcasts"
+    base.mkdir(parents=True, exist_ok=True)
+    for old in base.iterdir():
+        if old.is_dir() and old.stat().st_mtime < time.time() - 2 * 86400:
+            shutil.rmtree(old, ignore_errors=True)
+    d = base / f"{app.now()}_{secrets.token_hex(3)}"
+    d.mkdir()
+    return d
+
+
+def bc_deliver(app, recipients, text: str, files) -> int:
+    """متن (اگر هست) و بعد فایل‌ها را برای هر گیرنده می‌فرستد؛ شمار کسانی که چیزی به آن‌ها رسید."""
+    n = 0
+    for s in recipients:
+        ok = bool(text and app.send(s["chat_id"], f"📢 پیام مجموعه رشد\n\n{text[:3500]}"))
+        for k, path in enumerate(files):
+            ok = bool(app.send_file(s["chat_id"], path, "📢 پیام مجموعه رشد" if (not text and k == 0) else None)) or ok
+            time.sleep(0.04)
+        n += ok
+        time.sleep(0.04)
+    return n
+
+
+def bc_cleanup(files):
+    for f in files:
+        Path(f).unlink(missing_ok=True)
+    for d in {Path(f).parent for f in files}:
+        try:
+            d.rmdir()
+        except OSError:
+            pass
+
+
+def _bc_confirm(app, ctx, data):
+    rec = bc_recipients(app, data["target"])
+    if not rec:
         app.clear_state(ctx.chat_id)
+        bc_cleanup(data.get("files", []))
         app.send(ctx.chat_id, "گیرنده‌ای پیدا نشد (دانش‌آموز هنوز وارد بات نشده یا غیرفعال است).", [[btn("⬅ پیام همگانی", "a:bc")]])
         return
-    app.set_state(ctx.chat_id, "a:bcconfirm", {"target": data["target"], "text": raw})
-    who = bc_recipients(app, data["target"])[0]["full_name"] if data["target"][:1] == "s" and data["target"][1:].isdigit() else f"{fa(n)} نفر"
-    app.send(ctx.chat_id, f"🔎 پیش‌نمایش (به {who} ارسال می‌شود):\n\n📢 پیام مجموعه رشد\n\n{raw}",
-             [[btn("✅ ارسال", "a:bcsend"), btn("❌ لغو", "a:menu")]])
+    app.set_state(ctx.chat_id, "a:bcconfirm", data)
+    who = rec[0]["full_name"] if data["target"][:1] == "s" and data["target"][1:].isdigit() else f"{fa(len(rec))} نفر"
+    nf = len(data.get("files", []))
+    body = (f"\n\n📢 پیام مجموعه رشد\n\n{data['text']}" if data.get("text") else "")
+    app.send(ctx.chat_id, f"🔎 پیش‌نمایش (به {who} ارسال می‌شود):{body}" + (f"\n\n📎 {fa(nf)} فایل پیوست" if nf else ""),
+             [[btn("✅ ارسال", "a:bcsend"), btn("❌ لغو", "a:bccancel")], [btn("📎 افزودن فایل", "a:bcmore")]])
+
+
+def st_bct(app, ctx, msg, text, data):
+    data = {"target": data["target"], "text": data.get("text", ""), "files": list(data.get("files", []))}
+    got = _extract(msg)
+    if got:
+        file_id, name, ext, size = got
+        if ext not in BC_EXT:
+            app.send(ctx.chat_id, "این نوع فایل پذیرفته نمی‌شود (عکس، PDF، فایل‌های آفیس، متن، zip، mp3، mp4).")
+            return
+        if len(data["files"]) >= BC_MAX_FILES:
+            app.send(ctx.chat_id, f"حداکثر {fa(BC_MAX_FILES)} فایل در هر پیام.", [[btn("✅ ادامه", "a:bcgo")]])
+            return
+        cap = app.cfg.max_file_mb * 1024 * 1024
+        if size and size > cap:
+            app.send(ctx.chat_id, f"حجم فایل بیشتر از {fa(app.cfg.max_file_mb)} مگابایت است.")
+            return
+        dest = bc_dir(app) / f"f{len(data['files']) + 1}{ext}" if not data["files"] else Path(data["files"][0]).parent / f"f{len(data['files']) + 1}{ext}"
+        try:
+            real = app.bale.download(file_id, dest)
+        except BaleError as e:
+            log.warning("دریافت فایل پیام ناموفق: %s", e)
+            app.send(ctx.chat_id, "دریافت فایل ناموفق بود؛ دوباره بفرست.")
+            return
+        if real > cap:
+            dest.unlink(missing_ok=True)
+            app.send(ctx.chat_id, f"حجم فایل بیشتر از {fa(app.cfg.max_file_mb)} مگابایت است.")
+            return
+        data["files"].append(str(dest))
+        c = clean(msg.get("caption") or "")
+        if c and not data["text"]:
+            data["text"] = c
+        app.set_state(ctx.chat_id, "a:bct", data)
+        app.send(ctx.chat_id, f"📎 {fa(len(data['files']))} فایل دریافت شد." + (" متن از توضیح فایل برداشته شد." if c else "")
+                 + "\nفایل دیگری بفرست، یا متن پیام را بنویس، یا «ادامه» را بزن.", [[btn("✅ ادامه", "a:bcgo"), btn("❌ لغو", "a:bccancel")]])
+        return
+    raw = (msg.get("text") or "").strip()
+    if not raw:
+        app.send(ctx.chat_id, "متن پیام را بنویس (یا عکس/فایل بفرست).")
+        return
+    data["text"] = raw
+    _bc_confirm(app, ctx, data)
 
 
 def bc_send(app, ctx):
     state, d = app.get_state(ctx.chat_id)
     if state != "a:bcconfirm":
         return
-    n = 0
-    for s in bc_recipients(app, d["target"]):
-        if app.send(s["chat_id"], f"📢 پیام مجموعه رشد\n\n{d['text']}"):
-            n += 1
-        time.sleep(0.04)
-    app.audit(ctx.user_id, "broadcast", f"{d['target']}:{n}")
+    files = d.get("files", [])
+    n = bc_deliver(app, bc_recipients(app, d["target"]), d.get("text", ""), files)
+    bc_cleanup(files)
+    app.audit(ctx.user_id, "broadcast", f"{d['target']}:{n}" + (f":{len(files)}فایل" if files else ""))
     app.clear_state(ctx.chat_id)
     app.show(ctx, f"✅ پیام برای {fa(n)} نفر ارسال شد.", HOME)
 
@@ -1233,9 +1311,26 @@ def on_callback(app: App, ctx: Ctx, parts):
         bc_pick(app, ctx, i(0) if arg else None, i(1) if len(arg) > 1 else 0)
     elif c == "bct":
         app.set_state(ctx.chat_id, "a:bct", {"target": arg[0]})
-        app.send(ctx.chat_id, "متن پیام را بنویس:")
+        app.send(ctx.chat_id, "متن پیام را بنویس؛ اگر فایل هم داری (عکس، PDF، …) همین‌جا بفرست:")
     elif c == "bcsend":
         bc_send(app, ctx)
+    elif c == "bcgo":
+        state, d = app.get_state(ctx.chat_id)
+        if state == "a:bct" and (d.get("text") or d.get("files")):
+            _bc_confirm(app, ctx, d)
+        else:
+            app.send(ctx.chat_id, "متن یا فایلی نفرستاده‌ای.")
+    elif c == "bcmore":
+        state, d = app.get_state(ctx.chat_id)
+        if state == "a:bcconfirm":
+            app.set_state(ctx.chat_id, "a:bct", d)
+            app.send(ctx.chat_id, "فایل بعدی را بفرست (عکس یا فایل)، یا «ادامه» را بزن:", [[btn("✅ ادامه", "a:bcgo"), btn("❌ لغو", "a:bccancel")]])
+    elif c == "bccancel":
+        state, d = app.get_state(ctx.chat_id)
+        if state in ("a:bct", "a:bcconfirm"):
+            bc_cleanup(d.get("files", []))
+        app.clear_state(ctx.chat_id)
+        menu(app, ctx)
     # نشان دستی
     elif c == "badge":
         studs = app.conn.execute("SELECT * FROM students WHERE active=1 AND grade=6 ORDER BY full_name").fetchall()

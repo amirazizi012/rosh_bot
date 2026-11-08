@@ -559,7 +559,7 @@ ACTIONS = {
     # پیام و بازخورد
     "feedback": lambda a, m, one, i, ints: actions.give_feedback(a, m, i("sid"), i("aid"), one("text")),
     "feedback_resend": lambda a, m, one, i, ints: actions.resend_feedback(a, m, i("fid")),
-    "broadcast": lambda a, m, one, i, ints: actions.broadcast(a, m, one("target"), one("text")),
+    "broadcast": lambda a, m, one, i, ints: actions.broadcast(a, m, one("target"), one("text"), a.upload),
     # باشگاه کتابخوانی
     "book_edit": lambda a, m, one, i, ints: actions.book_edit(a, m, i("rid"), one("book"), one("from_p"), one("to_p")),
     "book_delete": lambda a, m, one, i, ints: actions.book_delete(a, m, i("rid")),
