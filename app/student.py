@@ -21,7 +21,7 @@ def menu_rows(st):
     if st["grade"] in R.GAMIFIED_GRADES:
         return MENU
     rows = [[btn("📚 تکالیف باز", "s:open"), btn("✅ ارسال‌های من", "s:done")],
-            [btn("📋 گزارش ارسال‌ها", "s:rep")],
+            [btn("📋 گزارش ارسال‌ها", "s:rep"), btn("🧾 ارسال رسید", "s:rcpt")],
             [btn("📈 پیشرفت من", "s:prog"), btn("💬 بازخوردها", "s:fb")]]
     if st["grade"] == 9:     # نهمی: تکلیف + باشگاه کتابخوانی
         rows.append([btn("📖 باشگاه کتابخوانی", "b:home")])
@@ -29,7 +29,7 @@ def menu_rows(st):
 
 
 MENU = [[btn("📚 تکالیف باز", "s:open"), btn("✅ ارسال‌های من", "s:done")],
-        [btn("📋 گزارش ارسال‌ها", "s:rep")],
+        [btn("📋 گزارش ارسال‌ها", "s:rep"), btn("🧾 ارسال رسید", "s:rcpt")],
         [btn("🏅 نشان‌ها و پیشرفت", "s:prog"), btn("💬 بازخوردها", "s:fb")]]
 BACK = [[btn("⬅ منوی اصلی", "s:home")]]
 ALLOWED_EXT = {".jpg", ".jpeg", ".png", ".webp", ".heic", ".pdf"}
@@ -508,6 +508,9 @@ def on_callback(app: App, ctx: Ctx, st, parts):
         list_done(app, ctx, st)
     elif cmd == "rep":
         report(app, ctx, st)
+    elif cmd == "rcpt":
+        from . import receipts
+        receipts.ask(app, ctx, st)
     elif cmd == "prog":
         progress(app, ctx, st)
     elif cmd == "fb":
@@ -534,5 +537,8 @@ def on_message(app: App, ctx: Ctx, st, msg):
     state, data = app.get_state(ctx.chat_id)
     if state == "s:upload":
         on_upload_message(app, ctx, st, msg, data)
+    elif state == "s:rcpt":
+        from . import receipts
+        receipts.on_message(app, ctx, st, msg)
     else:
         home(app, ctx, st)

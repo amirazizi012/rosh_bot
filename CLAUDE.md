@@ -33,6 +33,7 @@ python tests/test_grade7.py
 python tests/test_grade9.py
 python tests/test_panel_edit.py
 python tests/test_panel_phase2.py
+python tests/test_receipts.py
 ```
 اگر آزمونی شکست خورد، علتش را پیدا کن؛ آزمون را فقط برای تغییر رفتار عمدی تغییر بده.
 

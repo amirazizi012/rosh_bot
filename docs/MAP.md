@@ -101,6 +101,7 @@ flowchart LR
 | `app/rules.py` | **تنها** جای منطق مهلت/تأخیر/نشان/امتیاز | هیچ import از لایه‌ی UI ندارد؛ آزمون‌پذیر |
 | `app/student.py` | ورود، فهرست تکالیف، آپلود چندعکسه، ویرایش، بازخورد | `_extract` را `admin.py` هم import می‌کند |
 | `app/admin.py` | تمام منوهای مدیر (۱۱۹۱ خط) | بزرگ‌ترین فایل؛ در بخش ۴ نقشه‌ی بخش‌هایش آمده |
+| `app/receipts.py` | رسید واریزی دانش‌آموز (دکمه‌ی «🧾 ارسال رسید»)؛ مدیر در بات (`a:rcp`) و پنل (`/receipts`) می‌بیند | جدول `receipts`؛ فایل‌ها در `data/receipts/` |
 | `app/actions.py` | عمل‌های نوشتنیِ پنل وب (دانش‌آموز/گروه، تکلیف، پیام، کتابخوانی، مدیران) | هر تابع `(ok, پیام)` برمی‌گرداند؛ ADR 0009 |
 | `app/review.py` | بررسی پاسخ توسط مدیر: وضعیت دستی، ناقص، بخشودن تأخیر (ADR 0005) | وضعیت را فقط با `rules.student_status` بخوان |
 | `app/books.py` | باشگاه کتابخوانی پایه‌ی ۹ + بخش مدیر کتابخوانی + ثبت گروه | ارسال به گروه فقط با `book_group_chat_id` |
@@ -226,6 +227,7 @@ flowchart LR
 | `test_books.py` | باشگاه کتابخوانی، گزارش‌ها، ارسال به گروه |
 | `test_login_edit.py` | ورود با یوزرنیم، ویرایش ارسال |
 | `test_panel.py` | ورود پنل، رد درخواست‌های بیرون از `/act`، صفحه‌ها |
+| `test_receipts.py` | رسید واریزی: ارسال دانش‌آموز، دیدن و «دریافت شد» توسط مدیر در بات و پنل |
 | `test_panel_phase2.py` | تکلیف با آپلود، تمدید/عذر/ارسال مجدد/لغو، بازخورد و پیام، کتابخوانی، مدیران |
 | `test_panel_edit.py` | ویرایش از پنل: CSRF/Origin/مدیر بودن، دانش‌آموز و گروه، وضعیت پاسخ، امتیاز و نشان |
 | `test_review.py` | بررسی مدیر، نشان در انتظار تأیید (ADR 0005) |
@@ -268,7 +270,7 @@ flowchart LR
 
 `_ctx`, `add_students`, `_student`, `rename_student`, `set_username`, `toggle_active`, `reset_login`, `set_student_groups`, `create_group`, `delete_group`, `set_group_members`, `set_status`, `approve_item`, `reject_item`, `approve_all`, `adjust_points`, `delete_badge`, `_tell`, `_save_files`, `create_assignment`, `add_assignment_files`, `delete_assignment_file`, `edit_assignment`, `_need_ts`, `extend_all`, `extend_one`, `cancel_assignment`, `excuse`, `request_resubmit`, `remind_assignment`, `give_feedback`, `broadcast`, `book_edit`, `book_delete`, `book_repost`, `book_set_group`, `admin_add`, `admin_remove`
 
-**`app/admin.py`** (1271 خط)
+**`app/admin.py`** (1289 خط)
 
 `menu`, `student_buttons`, `tell`, `notify_new_badges`, `open_btn`, `notify_assignment`, `target_text`, `group_rows_toggle`, `new_start`, `st_ntitle`, `st_nbody`, `new_kind`, `ask_points`, `st_npts`, `new_target`, `ask_deadline`, `st_ndl`, `publish`, `new_cancel`, `alist`, `tally`, `aview`, `astatus`, `aview_pick`, `asub_view`, `azip`, `aremind`, `ask_ext_all`, `st_aextv`, `st_aext1v`, `st_aedit`, `st_aexc`, `st_ars`, `slist`, `sflist`, `new_code`, `parse_student_line`, `st_sadd`, `codes`, `st_uns`, `st_stun`, `login_fails`, `sview`, `stgrp`, `stg_toggle`, `st_stname`, `streset`, `sttog`, `stzip`, `glist`, `st_gnew`, `gview`, `gmembers`, `gt_toggle`, `gdel`, `rep_menu`, `rep_xlsx`, `rep_recent`, `rep_badges`, `strep`, `ask_feedback`, `st_fb`, `bc_start`, `bc_pick`, `bc_recipients`, `st_bct`, `bc_send`, `st_bds`, `adm_view`, `st_admadd`, `web_login`, `on_message`, `_pending`, `on_callback`
 
@@ -288,7 +290,7 @@ flowchart LR
 
 `_admin_ids`, `_get_setting`, `_set_setting`
 
-**`app/db.py`** (170 خط)
+**`app/db.py`** (176 خط)
 
 `connect`, `_cols`, `migrate`
 
@@ -304,17 +306,21 @@ flowchart LR
 
 `needs_pause`, `start_panel`, `run`
 
-**`app/panel.py`** (593 خط) — کلاس‌ها: Store, PanelServer, Handler
+**`app/panel.py`** (596 خط) — کلاس‌ها: Store, PanelServer, Handler
 
 `open_ro`, `open_rw`, `csrf_token`, `code_hash`, `parse_multipart`, `make_server`, `run`
 
-**`app/panel_ui.py`** (673 خط)
+**`app/panel_ui.py`** (691 خط)
 
-`esc`, `form`, `hid`, `status_form`, `has_logo`, `_fa_node`, `persian_digits`, `layout`, `login_page`, `chip`, `stat_bar`, `progress`, `table`, `link`, `students_active`, `groups_of`, `tally`, `files_html`, `dashboard`, `_uname`, `students_page`, `student_page`, `assignments_page`, `assignment_page`, `badges_page`, `feedback_page`, `audit_page`, `groups_page`, `group_page`, `not_found`, `_pair`, `_book_section`, `student_book_page`, `books_page`, `points_page`, `messages_page`, `admins_page`
+`esc`, `form`, `hid`, `status_form`, `has_logo`, `_fa_node`, `persian_digits`, `layout`, `login_page`, `chip`, `stat_bar`, `progress`, `table`, `link`, `students_active`, `groups_of`, `tally`, `files_html`, `dashboard`, `_uname`, `students_page`, `student_page`, `assignments_page`, `assignment_page`, `badges_page`, `feedback_page`, `audit_page`, `groups_page`, `group_page`, `not_found`, `_pair`, `_book_section`, `student_book_page`, `books_page`, `points_page`, `messages_page`, `admins_page`, `receipts_page`
 
 **`app/points.py`** (209 خط)
 
 `tell`, `pending_count`, `_pending_items`, `pending_view`, `_decide`, `approve`, `reject`, `approve_badge`, `reject_badge`, `approve_all`, `student_points`, `st_padj`, `badges_view`, `badge_delete`, `st_sbde`
+
+**`app/receipts.py`** (111 خط)
+
+`new_count`, `ask`, `on_message`, `lst`, `view`, `mark_seen`
 
 **`app/reports.py`** (321 خط)
 
@@ -336,7 +342,7 @@ flowchart LR
 
 `tick`, `reminders`, `cleanup_exports`, `daily_backup`
 
-**`app/student.py`** (539 خط)
+**`app/student.py`** (545 خط)
 
 `menu_rows`, `notify_admins`, `learn_username`, `try_login`, `start_login`, `ask_code`, `on_code`, `home`, `list_open`, `list_done`, `report`, `progress`, `feedbacks`, `view_assignment`, `view_mine`, `start_edit`, `show_draft`, `remove_file`, `_purge_superseded`, `start_upload`, `_unlink_if_unreferenced`, `_discard_drafts`, `_extract`, `on_upload_message`, `finish`, `cancel`, `on_callback`, `on_message`
 
