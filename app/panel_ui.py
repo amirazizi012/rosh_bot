@@ -16,7 +16,7 @@ ACTION_LABELS = {
     "extend_all": "تمدید مهلت برای همه", "extend_one": "تمدید مهلت برای یک نفر", "excuse": "ثبت عذر موجه",
     "resubmit_request": "درخواست ارسال مجدد", "remind": "یادآوری", "feedback": "بازخورد",
     "broadcast": "پیام همگانی", "badge_manual": "نشان دستی", "students_add": "افزودن دانش‌آموز",
-    "student_reset": "بازنشانی کد ورود", "student_toggle": "فعال/غیرفعال‌سازی دانش‌آموز",
+    "student_reset": "بازنشانی کد ورود", "student_delete": "حذف کامل دانش‌آموز", "student_toggle": "فعال/غیرفعال‌سازی دانش‌آموز",
     "student_group_toggle": "تغییر گروه دانش‌آموز", "group_create": "ساخت گروه", "group_delete": "حذف گروه",
     "group_member_toggle": "تغییر اعضای گروه", "admin_add": "افزودن مدیر", "admin_del": "حذف مدیر",
     "zip_assignment": "دانلود پاسخ‌های تکلیف", "report_xlsx": "دریافت اکسل", "web_login_code": "کد ورود به پنل وب",
@@ -397,6 +397,9 @@ def student_page(conn, cfg, now, sid: int, logo=False):
               form("student_toggle", hid(sid=sid), f"/student/{sid}", "⏸ غیرفعال‌سازی" if s["active"] else "▶ فعال‌سازی", "ghost") + " " +
               form("student_reset", hid(sid=sid), f"/student/{sid}", "🔓 بازنشانی ورود", "ghost",
                    "ورود دانش‌آموز بازنشانی شود؟ باید دوباره /start بزند.") +
+              '<hr>' + form("student_delete", hid(sid=sid) + f'<input name="confirm" size="22" placeholder="نام کامل او را بنویس" autocomplete="off"> ', "/students", "🗑 حذف کامل برای همیشه", "warn",
+                            "این دانش‌آموز و همه‌ی داده‌هایش (پاسخ‌ها، فایل‌ها، رسیدها، بازخوردها، نشان و امتیاز) برای همیشه حذف شود؟ برگشت ندارد.") +
+              '<p class="muted">برای حذف، نام کامل دانش‌آموز را دقیقاً در کادر بنویس. اگر فقط نمی‌خواهی ببینیش، «غیرفعال‌سازی» کافی است.</p>' +
               (("<br>" + form("student_groups", g_inner, f"/student/{sid}", "ذخیره‌ی گروه‌ها", block=True)) if all_groups else
                '<p class="muted">هنوز گروهی نساخته‌ای؛ از صفحه‌ی «گروه‌ها» بساز.</p>') + '</details>')
     body = (f'<p><a href="/students">← همه‌ی دانش‌آموزان</a></p><h1>{esc(s["full_name"])}{state}</h1>'

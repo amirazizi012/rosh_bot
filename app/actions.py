@@ -63,6 +63,43 @@ def _student(app, sid):
     return app.student(sid)
 
 
+def delete_student(app: App, admin_id: int, sid: int, confirm_name=None):
+    """حذف کامل و برگشت‌ناپذیر: خود دانش‌آموز و همه‌ی داده‌هایش (پاسخ‌ها و فایل‌ها، رسیدها، بازخوردها، نشان و امتیاز، گزارش‌های مطالعه…).
+    confirm_name: در پنل باید دقیقاً نام دانش‌آموز تایپ شود؛ در بات (None) دکمه‌ی تأیید دو‌مرحله‌ای است."""
+    s = app.student(sid)
+    if not s:
+        return False, "دانش‌آموز پیدا نشد (شاید قبلاً حذف شده)."
+    if confirm_name is not None and clean(confirm_name) != clean(s["full_name"]):
+        return False, "برای حذف باید نام دانش‌آموز را دقیقاً همان‌طور که هست در کادر تأیید بنویسی."
+    c = app.conn
+    files = [r[0] for r in c.execute("SELECT f.path FROM submission_files f JOIN submissions s ON s.id=f.submission_id WHERE s.student_id=?", (sid,))]
+    files += [r[0] for r in c.execute("SELECT path FROM receipts WHERE student_id=? AND path<>''", (sid,))]
+    n_sub = c.execute("SELECT COUNT(*) FROM submissions WHERE student_id=?", (sid,)).fetchone()[0]
+    c.execute("DELETE FROM submission_files WHERE submission_id IN (SELECT id FROM submissions WHERE student_id=?)", (sid,))
+    for t in ("submissions", "student_deadlines", "excuses", "resubmit_requests", "receipts", "feedback", "badges", "reminders",
+              "book_reports", "points_ledger", "badge_blocks", "status_overrides", "student_groups"):
+        c.execute(f"DELETE FROM {t} WHERE student_id=?", (sid,))
+    if s["chat_id"]:
+        c.execute("DELETE FROM chat_state WHERE chat_id=?", (s["chat_id"],))
+        c.execute("DELETE FROM login_attempts WHERE chat_id=?", (s["chat_id"],))
+    c.execute("DELETE FROM students WHERE id=?", (sid,))
+    c.commit()
+    app.audit(admin_id, "student_delete", f"{s['full_name']} (id {sid}، پایه {s['grade']}، {n_sub} پاسخ)")
+    dirs = set()
+    for p in files:
+        try:
+            Path(p).unlink(missing_ok=True)
+            dirs.add(Path(p).parent)
+        except OSError:
+            pass
+    for d in dirs:
+        try:
+            d.rmdir()
+        except OSError:
+            pass
+    return True, f"«{s['full_name']}» و همه‌ی داده‌هایش برای همیشه حذف شد."
+
+
 def rename_student(app: App, admin_id: int, sid: int, name: str):
     name = clean(name)
     if not _student(app, sid) or not (2 <= len(name) <= 60):

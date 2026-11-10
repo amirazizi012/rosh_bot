@@ -1,14 +1,15 @@
 {
-  "generated_at": "2026-11-10T09:48:56+00:00",
+  "generated_at": "2026-11-10T10:21:57+00:00",
   "generator": "scripts/map.py",
   "modules": [
     {
       "file": "app/actions.py",
-      "lines": 585,
+      "lines": 622,
       "functions": [
         "_ctx",
         "add_students",
         "_student",
+        "delete_student",
         "rename_student",
         "set_username",
         "toggle_active",
@@ -67,7 +68,7 @@
     },
     {
       "file": "app/admin.py",
-      "lines": 1393,
+      "lines": 1405,
       "functions": [
         "menu",
         "student_buttons",
@@ -321,7 +322,7 @@
     },
     {
       "file": "app/panel.py",
-      "lines": 605,
+      "lines": 606,
       "functions": [
         "open_ro",
         "open_rw",
@@ -350,7 +351,7 @@
     },
     {
       "file": "app/panel_ui.py",
-      "lines": 722,
+      "lines": 725,
       "functions": [
         "esc",
         "form",
@@ -935,6 +936,7 @@
   },
   "tests": [
     "tests/test_books.py",
+    "tests/test_delete_student.py",
     "tests/test_flow.py",
     "tests/test_grade7.py",
     "tests/test_grade9.py",

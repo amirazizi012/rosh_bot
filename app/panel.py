@@ -533,6 +533,7 @@ ACTIONS = {
     "student_rename": lambda a, m, one, i, ints: actions.rename_student(a, m, i("sid"), one("name")),
     "student_username": lambda a, m, one, i, ints: actions.set_username(a, m, i("sid"), one("username")),
     "student_toggle": lambda a, m, one, i, ints: actions.toggle_active(a, m, i("sid")),
+    "student_delete": lambda a, m, one, i, ints: actions.delete_student(a, m, i("sid"), one("confirm")),
     "student_reset": lambda a, m, one, i, ints: actions.reset_login(a, m, i("sid")),
     "student_groups": lambda a, m, one, i, ints: actions.set_student_groups(a, m, i("sid"), ints("groups")),
     "group_create": lambda a, m, one, i, ints: actions.create_group(a, m, one("name")),

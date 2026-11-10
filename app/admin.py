@@ -658,7 +658,7 @@ def sview(app: App, ctx: Ctx, sid: int):
             [btn("📥 همه‌ی پاسخ‌هایش", f"a:stzip:{sid}"), btn("✏ تغییر نام", f"a:stname:{sid}")],
             [btn("🆔 یوزرنیم بله", f"a:stun:{sid}"), btn("🔓 بازنشانی ورود", f"a:streset:{sid}")],
             [btn("✉ ارسال پیام به او", f"a:bct:s{sid}"), btn("🧾 رسیدهایش", f"a:rcp:0:{sid}")],
-            [btn("▶ فعال‌سازی" if not s["active"] else "⏸ غیرفعال‌سازی", f"a:sttog:{sid}")],
+            [btn("▶ فعال‌سازی" if not s["active"] else "⏸ غیرفعال‌سازی", f"a:sttog:{sid}"), btn("🗑 حذف کامل", f"a:sdel:{sid}")],
             [btn("⬅ فهرست", f"a:sf:{s['grade']}:0")]]
     app.show(ctx, text, rows)
 
@@ -1264,6 +1264,18 @@ def on_callback(app: App, ctx: Ctx, parts):
         login_fails(app, ctx)
     elif c == "st":
         sview(app, ctx, i(0))
+    elif c == "sdel":
+        s = app.student(i(0))
+        if not s:
+            app.show(ctx, "دانش‌آموز پیدا نشد.", [[btn("⬅ فهرست", "a:slist:0")]])
+        else:
+            app.show(ctx, f"🗑 حذف کامل «{s['full_name']}»؟\n\nخودش و همه‌ی داده‌هایش برای همیشه پاک می‌شود: پاسخ‌ها و فایل‌ها، رسیدها، بازخوردها، نشان و امتیاز، گزارش‌های مطالعه.\n"
+                          "این کار برگشت ندارد. (اگر فقط نمی‌خواهی ببینیش «غیرفعال‌سازی» کافی است.)",
+                     [[btn("✅ بله، برای همیشه حذف شود", f"a:sdelok:{s['id']}")], [btn("❌ نه، برگرد", f"a:st:{s['id']}")]])
+    elif c == "sdelok":
+        from . import actions
+        ok, msg = actions.delete_student(app, ctx.user_id, i(0))
+        app.show(ctx, ("✅ " if ok else "⚠ ") + msg, [[btn("👥 دانش‌آموزان", "a:slist:0")]])
     elif c == "strep":
         strep(app, ctx, i(0))
     elif c == "stgrp":
