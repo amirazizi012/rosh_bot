@@ -4,6 +4,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.dirname(__file__))
 from app import rules as R, usernames
+from app.fa import fa
 import test_flow as tf
 from test_flow import make_app, upd, go, ADMIN, STU
 
@@ -44,6 +45,22 @@ def test_admin_adds_students_with_usernames():
     assert rows["محمد کریمی"]["username"] is None and rows["رضا بی‌یوزرنیم"]["username"] is None
     assert app.conn.execute("SELECT 1 FROM groups WHERE name='گروه ب'").fetchone()           # قالب قدیمی «نام | گروه»
     assert "@ali_01" in bale.texts(ADMIN)[-1]
+
+
+def test_add_shows_password_and_student_logs_in_with_it():
+    """بدون یوزرنیم: رمز ۶ رقمی همان لحظه‌ی افزودن به مدیر نشان داده می‌شود و دانش‌آموز با آن وارد می‌شود (کنار ورود با یوزرنیم)."""
+    app, bale = make_app()
+    app.cfg.login_mode = "both"
+    go(app, upd(ADMIN, "/start"), upd(ADMIN, data="a:sadd:6"), upd(ADMIN, "حسین بی‌یوزرنیم\nعلی رضایی | @Ali_01"))
+    code = app.conn.execute("SELECT code FROM students WHERE full_name='حسین بی‌یوزرنیم'").fetchone()["code"]
+    out = "\n".join(bale.texts(ADMIN)[-2:])
+    assert "رمز" in out and fa(code) in out and "@ali_01" in out
+    go(app, uupd(5000, "/start"))                                  # بدون یوزرنیم ← رمز می‌خواهد
+    assert app.get_state(5000)[0] == "s:code"
+    go(app, uupd(5000, fa(code)))                                  # رمز با ارقام فارسی هم پذیرفته می‌شود
+    assert app.conn.execute("SELECT chat_id FROM students WHERE full_name='حسین بی‌یوزرنیم'").fetchone()["chat_id"] == 5000
+    go(app, uupd(5001, "/start", "ali_01"))                        # با یوزرنیم هم همچنان خودکار وارد می‌شود
+    assert app.conn.execute("SELECT chat_id FROM students WHERE username='ali_01'").fetchone()["chat_id"] == 5001
 
 
 def test_login_by_username_flow():

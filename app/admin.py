@@ -509,6 +509,10 @@ def new_code(app: App) -> str:
             return code
 
 
+def code_of(app, sid: int) -> str:
+    return app.conn.execute("SELECT code FROM students WHERE id=?", (sid,)).fetchone()["code"]
+
+
 def parse_student_line(line: str):
     """«نام | @یوزرنیم | گروه» ← (نام، یوزرنیم یا None، گروه). قالب قدیمی «نام | گروه» هم کار می‌کند."""
     parts = [clean(p) for p in line.split("|")]
@@ -539,12 +543,15 @@ def st_sadd(app, ctx, msg, text, data):
             app.conn.execute("INSERT OR IGNORE INTO groups(name) VALUES(?)", (grp,))
             gid = app.conn.execute("SELECT id FROM groups WHERE name=?", (grp,)).fetchone()["id"]
             app.conn.execute("INSERT OR IGNORE INTO student_groups VALUES(?,?)", (cur.lastrowid, gid))
-        out.append(f"{name} — " + (f"@{uname}" if uname else "بدون یوزرنیم") + (f" — گروه: {grp}" if grp else "") + note)
+        code = app.conn.execute("SELECT code FROM students WHERE id=?", (cur.lastrowid,)).fetchone()["code"]
+        out.append(f"{name} — " + (f"@{uname}" if uname else "بدون یوزرنیم") + (f" — 🔑 رمز: {fa(code)}" if app.cfg.login_mode == "both" else "") + (f" — گروه: {grp}" if grp else "") + note)
     app.conn.commit()
     app.audit(ctx.user_id, "students_add", str(len(out)))
     app.clear_state(ctx.chat_id)
-    app.send_long(ctx.chat_id, f"✅ {fa(len(out))} دانش‌آموز اضافه شد:\n\n" + "\n".join(out) +
-                  "\n\nهر دانش‌آموز بات را استارت کند، اگر یوزرنیمش درست باشد خودکار وارد می‌شود.",
+    tail = ("\n\nهر دانش‌آموز بات را استارت کند: اگر یوزرنیمش ثبت شده باشد خودکار وارد می‌شود، وگرنه «رمز ۶ رقمی» خودش را به بات می‌فرستد."
+            if app.cfg.login_mode == "both" else
+            "\n\nهر دانش‌آموز بات را استارت کند، اگر یوزرنیمش درست باشد خودکار وارد می‌شود.")
+    app.send_long(ctx.chat_id, f"✅ {fa(len(out))} دانش‌آموز اضافه شد:\n\n" + "\n".join(out) + tail,
                   [[btn("👥 دانش‌آموزان", "a:slist:0")]])
 
 
@@ -1242,7 +1249,8 @@ def on_callback(app: App, ctx: Ctx, parts):
             app.set_state(ctx.chat_id, "a:sadd", {"grade": g})
             app.send(ctx.chat_id, f"دانش‌آموزان «پایه‌ی {R.GRADE_NAME[g]}» را بفرست؛ هر نفر در یک خط:\n"
                                   "نام | @یوزرنیم بله\n(اختیاری، سوم: | گروه)\nمثال:  علی رضایی | @ali_01\n"
-                                  "اگر یوزرنیم را بعداً می‌دهی فقط نام را بنویس.\n(حداکثر ۶۰ نفر در هر پیام)")
+                                  "اگر یوزرنیم ندارد فقط نام را بنویس؛ برایش یک «رمز ۶ رقمی» ساخته می‌شود و بعد از ثبت همین‌جا نشانت می‌دهم تا به او بدهی."
+                                  "\n(حداکثر ۶۰ نفر در هر پیام)")
     elif c == "codes":
         codes(app, ctx)
     elif c == "uns":

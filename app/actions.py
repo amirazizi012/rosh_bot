@@ -34,7 +34,7 @@ def add_students(app: App, admin_id: int, text: str, grade: int):
     lines = [clean(l) for l in (text or "").split("\n") if clean(l)][:60]
     if not lines:
         return False, "حداقل یک نام بنویس."
-    done, notes = 0, []
+    done, notes, made = 0, [], []
     for line in lines:
         name, uname, grp = admin.parse_student_line(line)
         if not name:
@@ -49,11 +49,14 @@ def add_students(app: App, admin_id: int, text: str, grade: int):
             gid = app.conn.execute("SELECT id FROM groups WHERE name=?", (grp,)).fetchone()["id"]
             app.conn.execute("INSERT OR IGNORE INTO student_groups VALUES(?,?)", (cur.lastrowid, gid))
         done += 1
+        made.append((name, uname, admin.code_of(app, cur.lastrowid)))
     app.conn.commit()
     if not done:
         return False, "نام معتبری پیدا نشد."
     app.audit(admin_id, "students_add", str(done))
-    return True, f"{fa(done)} دانش‌آموز اضافه شد." + ("" if not notes else " ⚠ " + "؛ ".join(notes))
+    shown = "؛ ".join(f"{n}: {fa(c)}" for n, u, c in made[:15])
+    return True, (f"{fa(done)} دانش‌آموز اضافه شد." + (f" 🔑 رمز ورود → {shown}" + (" …(بقیه را از صفحه‌ی هر دانش‌آموز ببین)" if len(made) > 15 else "") if shown else "")
+                  + ("" if not notes else " ⚠ " + "؛ ".join(notes)))
 
 
 def _student(app, sid):

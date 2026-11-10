@@ -159,6 +159,22 @@ def test_origin_null_multipart_and_size_limit():
         srv.shutdown()
 
 
+def test_panel_add_shows_password():
+    from app.fa import fa
+    app, bale, cfg, srv, cl = start()
+    try:
+        tok = token(cl, "/students")
+        st_, loc, ok_, msg_ = post(cl, "students_add", tok, back="/students", text="کیان بی‌یوزرنیم\nنیما | @nima_9", grade="6")
+        assert ok_
+        code = row(app, "SELECT code FROM students WHERE full_name='کیان بی‌یوزرنیم'")["code"]
+        assert "رمز" in msg_ and fa(code) in msg_ and "کیان بی‌یوزرنیم" in msg_
+        assert fa(code) in cl.req("GET", "/students")[2].decode()                  # تا وارد نشده، رمز در فهرست دیده می‌شود
+        sid = row(app, "SELECT id FROM students WHERE full_name='کیان بی‌یوزرنیم'")["id"]
+        assert "رمز ورود به بات" in cl.req("GET", f"/student/{sid}")[2].decode()
+    finally:
+        srv.shutdown()
+
+
 if __name__ == "__main__":
     for k, v in list(globals().items()):
         if k.startswith("test_"):

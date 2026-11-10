@@ -179,7 +179,7 @@ flowchart LR
 | `BOOK_MAX_PAGES` / `BOOK_WINDOW_DAYS` | ۳۰۰ / ۷ | سقف صفحه‌ی هر گزارش / مهلت ثبت هر بخش روز (روز بعد از پایان بخش) |
 | `PANEL_ENABLE` / `PANEL_HOST` / `PANEL_PORT` / `PANEL_URL` | ۰ / `127.0.0.1` / ۸۰۹۰ / خالی | پنل |
 | `PANEL_SECURE_COOKIE` / `PANEL_TRUST_PROXY` | ۰ / ۰ | پشت پروکسی HTTPS روشن شوند |
-| `LOGIN_MODE` | `username` | `both` یعنی کد ۶ رقمی هم قبول است |
+| `LOGIN_MODE` | `both` | ورود با رمز ۶ رقمی کنار یوزرنیم همیشه فعال است؛ `username_only` رمز را خاموش می‌کند (مقدار قدیمی `username` هم دیگر آن را خاموش نمی‌کند) |
 | `SQLITE_JOURNAL` | `WAL` | روی دیسک شبکه‌ای در صورت مشکل `DELETE` |
 
 > `max_files_per_submission` (پیش‌فرض ۲۰ فایل در هر ارسال) از `MAX_FILES_PER_SUBMISSION` خوانده می‌شود؛ پنجره‌ی ویرایش پاسخ (`EDIT_WINDOW_HOURS`، پیش‌فرض ۹۶ ساعت بعد از مهلت) در ستون `assignments.edit_hours` هر تکلیف ذخیره می‌شود.

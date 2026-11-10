@@ -84,5 +84,6 @@ def load() -> Config:
         panel_trust_proxy=os.environ.get("PANEL_TRUST_PROXY", "0") == "1",
         panel_enable=os.environ.get("PANEL_ENABLE", "0") == "1",
         panel_password=os.environ.get("PANEL_PASSWORD", "").strip(),
-        login_mode="both" if os.environ.get("LOGIN_MODE", "username").strip().lower() == "both" else "username",
+        # ورود با رمز (کد ۶ رقمی) همیشه کنار یوزرنیم فعال است؛ فقط با LOGIN_MODE=username_only خاموش می‌شود
+        login_mode="username" if os.environ.get("LOGIN_MODE", "both").strip().lower() == "username_only" else "both",
     )

@@ -311,7 +311,7 @@ def students_page(conn, cfg, now, logo=False) -> str:
     rows = []
     for s in conn.execute("SELECT * FROM students ORDER BY active DESC, grade, full_name").fetchall():
         state = "فعال" if s["active"] else "غیرفعال"
-        joined = "✔ وارد شده" if s["chat_id"] else "🕓 هنوز وارد نشده"
+        joined = "✔ وارد شده" if s["chat_id"] else "🕓 هنوز وارد نشده" + (f" | 🔑 {fa(s['code'])}" if s["code"] else "")
         grade = R.GRADE_NAME.get(s["grade"], "ششم")
         t = R.student_stats(conn, s["id"], now, n)
         rows.append([link(f"/student/{s['id']}", s["full_name"]) + _uname(s), esc(grade), groups_of(conn, s["id"]), esc(f"{state} | {joined}"),
@@ -319,7 +319,7 @@ def students_page(conn, cfg, now, logo=False) -> str:
                      f'{fa(t["badges"])} نشان | {fa(t["points"])} امتیاز' if s["grade"] in R.GAMIFIED_GRADES else "—"])
     grade_opts = "".join(f'<option value="{g}">{esc(nm)}</option>' for g, nm in sorted(R.GRADE_NAME.items()))
     add = ('<details class="mng"><summary>➕ افزودن دانش‌آموز</summary>' +
-           form("students_add", f'<p class="muted">هر خط یک نفر: <b>نام | @یوزرنیم بله | گروه</b> (یوزرنیم و گروه اختیاری؛ حداکثر ۶۰ نفر)</p>'
+           form("students_add", f'<p class="muted">هر خط یک نفر: <b>نام | @یوزرنیم بله | گروه</b> (یوزرنیم و گروه اختیاری؛ حداکثر ۶۰ نفر). هر دانش‌آموز یک «رمز ۶ رقمی» هم دارد؛ بدون یوزرنیم با همان رمز وارد بات می‌شود و رمز بعد از افزودن نشان داده می‌شود.</p>'
                 f'<textarea name="text" placeholder="علی رضایی | @ali_01"></textarea><br>پایه: <select name="grade">{grade_opts}</select> ',
                 "/students", "افزودن", block=True) + '</details>')
     body = ('<h1>دانش‌آموزان</h1><p class="sub">برای دیدن گزارش کامل هر نفر روی نامش بزن.</p>' + add +
@@ -400,7 +400,7 @@ def student_page(conn, cfg, now, sid: int, logo=False):
               (("<br>" + form("student_groups", g_inner, f"/student/{sid}", "ذخیره‌ی گروه‌ها", block=True)) if all_groups else
                '<p class="muted">هنوز گروهی نساخته‌ای؛ از صفحه‌ی «گروه‌ها» بساز.</p>') + '</details>')
     body = (f'<p><a href="/students">← همه‌ی دانش‌آموزان</a></p><h1>{esc(s["full_name"])}{state}</h1>'
-            f'<p class="sub">پایه‌ی {esc(R.GRADE_NAME.get(s["grade"], ""))} | گروه‌ها: {groups_of(conn, sid)}</p><div class="grid">{chips}</div>'
+            f'<p class="sub">پایه‌ی {esc(R.GRADE_NAME.get(s["grade"], ""))} | گروه‌ها: {groups_of(conn, sid)} | رمز ورود به بات: <b dir="ltr">{fa(s["code"])}</b></p><div class="grid">{chips}</div>'
             f'{manage}{msgs}{fb_html}{rc_html}{streak_html}<h2>تکالیف</h2>{asg_html}{ledger_html}{bottom}{book_html}'
             f'<p style="margin-top:16px"><a class="btn ghost" href="/zip-student/{sid}">📥 دانلود همه‌ی پاسخ‌های او (ZIP)</a></p>')
     return layout(s["full_name"], body, "/students", logo=logo)
